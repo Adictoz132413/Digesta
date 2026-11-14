@@ -14,7 +14,8 @@ Aplicación web personal, instalable en Android (PWA), para registrar comidas, b
 Requisitos: [Node.js](https://nodejs.org) 20 o superior (probado con Node 22).
 
 ```bash
-cd digesta
+git clone https://github.com/Adictoz132413/Digesta.git
+cd Digesta
 npm install          # instala dependencias (una sola vez)
 npm run dev          # servidor de desarrollo → http://localhost:5173
 ```
@@ -35,11 +36,11 @@ Una PWA sólo se puede instalar si se abre desde **HTTPS** o desde **localhost**
 
 ### Opción A — Publicarla gratis (recomendada para uso diario)
 
-1. Ejecuta `npm run build`. Se crea la carpeta `digesta/dist`.
+1. Ejecuta `npm run build`. Se crea la carpeta `dist`.
 2. Súbela a un hosting estático gratuito, por ejemplo:
    - **Netlify Drop**: entra a <https://app.netlify.com/drop> y arrastra la carpeta `dist`.
    - **Cloudflare Pages** o **Vercel**: crea un proyecto y sube la carpeta `dist`.
-   - **GitHub Pages**: este repositorio incluye el flujo `.github/workflows/digesta-pages.yml`. Activa *Settings → Pages → Source: GitHub Actions* y ejecuta el flujo (o haz push a `main`). Ten en cuenta que GitHub Pages en repositorios privados requiere un plan de pago.
+   - **GitHub Pages** (lo más simple con este repositorio): activa *Settings → Pages → Source: GitHub Actions*. El flujo `.github/workflows/pages.yml` prueba, compila y publica en cada push a `main` (o ejecútalo a mano en *Actions*). Quedará en `https://adictoz132413.github.io/Digesta/`. Es gratis en repositorios públicos; en privados requiere un plan de pago.
 3. En el celular abre la dirección HTTPS con **Chrome**.
 4. Toca el menú **⋮ → Instalar aplicación** (o «Agregar a la pantalla principal»).
 5. Abre DIGESTA desde el icono. A partir de aquí funciona sin internet.
@@ -116,7 +117,8 @@ DIGESTA es un diario de seguimiento. No diagnostica enfermedades ni recomienda e
 ## 8. Arquitectura
 
 ```
-digesta/
+Digesta/
+├─ .github/workflows/pages.yml     pruebas + publicación en GitHub Pages
 ├─ index.html, vite.config.ts      PWA (vite-plugin-pwa/Workbox), CSP en producción
 ├─ public/                          iconos, theme-init.js, sw-notifications.js
 ├─ src/
