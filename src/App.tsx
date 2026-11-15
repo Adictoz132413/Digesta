@@ -22,6 +22,8 @@ import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { ReportScreen } from '@/features/reports/ReportScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { AssistantScreen } from '@/features/assistant/AssistantScreen';
+import { FastingScreen } from '@/features/fasting/FastingScreen';
+import { useFastingNotifier } from '@/lib/fastingNotifier';
 import { Onboarding } from '@/features/settings/Onboarding';
 import { ReminderBanner } from '@/features/settings/ReminderBanner';
 
@@ -52,6 +54,7 @@ function Shell() {
   const mode = getMode();
 
   useReminderScheduler();
+  useFastingNotifier();
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
   useEffect(() => {
@@ -95,6 +98,9 @@ function Shell() {
       break;
     case 'informe':
       screen = <ReportScreen days={Number(route.query.get('dias')) || 30} />;
+      break;
+    case 'ayuno':
+      screen = <FastingScreen />;
       break;
     case 'asistente':
       screen = <AssistantScreen />;

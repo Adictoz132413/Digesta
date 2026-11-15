@@ -136,6 +136,27 @@ export const reminderSchema = z.object({
   lastFired: z.string().optional(),
 });
 
+const fastProtocol = z.enum(['12:12', '14:10', '16:8', '18:6', 'personalizado']);
+
+export const fastSchema = z
+  .object({
+    id,
+    startAt: ms,
+    endAt: ms.optional(),
+    targetHours: z.number().min(8, 'El ayuno mínimo es de 8 horas').max(24, 'DIGESTA no acompaña ayunos de más de 24 horas'),
+    protocol: fastProtocol,
+    brokenByMealId: id.optional(),
+    hunger: z.number().int().min(0).max(10).optional(),
+    energy: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+    sideEffects: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
+    notes: shortText.optional(),
+    notifiedStart: z.boolean().optional(),
+    notifiedGoal: z.boolean().optional(),
+    createdAt: ms,
+    updatedAt: ms,
+  })
+  .refine((f) => f.endAt === undefined || f.endAt >= f.startAt, { message: 'El fin del ayuno no puede ser anterior al inicio', path: ['endAt'] });
+
 export const settingsSchema = z.object({
   theme: z.enum(['sistema', 'claro', 'oscuro']),
   waterGoal: z.number().int().min(1).max(30),
@@ -144,6 +165,9 @@ export const settingsSchema = z.object({
   disclaimerAccepted: z.boolean(),
   consultNotes: z.string().max(10000),
   analysisThreshold: z.number().int().min(1).max(10),
+  fastingAck: z.boolean(),
+  fastingProtocol: fastProtocol,
+  fastingCustomHours: z.number().int().min(8).max(24),
 });
 
 /** Foto dentro del respaldo JSON: el Blob viaja como data URL base64. */
@@ -174,6 +198,8 @@ export const backupSchema = z.object({
     customFoods: z.array(customFoodSchema),
     foodNotes: z.array(foodNoteSchema),
     photos: z.array(backupPhotoSchema),
+    /** Agregado en la versión con ayuno intermitente; los respaldos anteriores no lo traen. */
+    fasts: z.array(fastSchema).optional(),
     settings: settingsSchema.partial().optional(),
   }),
 });

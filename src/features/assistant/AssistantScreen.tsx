@@ -8,8 +8,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Keyboard, Mic, MicOff, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDb } from '@/db/db';
-import { foodHistory, getDailyLog, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
-import { dayKey } from '@/domain/dates';
+import { foodHistory, getDailyLog, getSettings, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
+import { dayKey, formatDuration, formatTime } from '@/domain/dates';
+import { endFast, maybeEndFastWithMeal, openFast, startFast } from '@/db/fasting';
+import { targetHoursFor } from '@/domain/fasting';
 import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
 import { emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
@@ -166,6 +168,11 @@ export function AssistantScreen() {
         const alerts: MedicalAlert[] = [];
         const savedMeals: Meal[] = [];
         for (const m of rec.meals) savedMeals.push(await saveMeal(m));
+        let endedFast: number | undefined;
+        for (const m of [...savedMeals].sort((a, b) => a.at - b.at)) {
+          const f = await maybeEndFastWithMeal(m);
+          if (f) endedFast = (f.endAt! - f.startAt) / 3600_000;
+        }
         for (const x of rec.symptoms) alerts.push(...symptomAlerts(await saveSymptom(x)));
         for (const x of rec.stools) alerts.push(...stoolAlerts(await saveStool(x)));
         const day = dayKey(now);
@@ -183,7 +190,8 @@ export function AssistantScreen() {
         ].filter(Boolean);
         setSession(emptySession());
         lastWasVoice.current = false;
-        respond(`Listo, guardé ${parts.join(', ')}. ¿Algo más?`, undefined, { saved: savedMeals });
+        const fastNote = endedFast !== undefined ? ` Con esa comida terminaste tu ayuno de ${formatDuration(Math.round(endedFast * 60))}.` : '';
+        respond(`Listo, guardé ${parts.join(', ')}.${fastNote} ¿Algo más?`, undefined, { saved: savedMeals });
         toast('Guardado en tu diario');
         if (alerts.length) entry.showAlerts(alerts);
       } catch (e) {
@@ -204,6 +212,10 @@ export function AssistantScreen() {
       push({ role: 'user', text: t });
       const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current });
       setSession(r.session);
+      if (r.fast) {
+        void runFast(r.fast).then((msg) => respond(`${msg}${r.text ? ` ${r.text}` : ''}`, r.question));
+        return;
+      }
       if (r.save) {
         void save(r.session);
         return;
@@ -212,6 +224,26 @@ export function AssistantScreen() {
     },
     [respond, save],
   );
+  /** Empieza o termina un ayuno desde la conversación. */
+  async function runFast(f: { kind: 'start' | 'end'; at: number }): Promise<string> {
+    try {
+      const open = await openFast();
+      if (f.kind === 'start') {
+        if (open) return 'Ya tienes un ayuno en curso. Puedes verlo en la sección de ayuno.';
+        const st = await getSettings();
+        if (!st.fastingAck) return 'Antes de tu primer ayuno, revisa las precauciones en la sección de ayuno intermitente (desde Hoy).';
+        const target = targetHoursFor(st.fastingProtocol, st.fastingCustomHours);
+        const fast = await startFast({ startAt: f.at, targetHours: target, protocol: st.fastingProtocol });
+        return `Listo, empezó tu ayuno de ${target} horas a las ${formatTime(fast.startAt)}. Podrás comer desde las ${formatTime(fast.startAt + target * 3600_000)}`;
+      }
+      if (!open) return 'No tienes un ayuno en curso.';
+      const ended = await endFast(open.id, f.at);
+      return `Terminaste tu ayuno de ${formatDuration(Math.round(((ended.endAt! - ended.startAt) / 3600_000) * 60))}.`;
+    } catch (e) {
+      return `No pude registrar el ayuno: ${errorMessage(e)}`;
+    }
+  }
+
   const submitRef = useRef(submit);
   submitRef.current = submit;
 

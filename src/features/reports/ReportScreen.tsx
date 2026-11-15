@@ -9,9 +9,11 @@ import { bristolDistribution, dayStatus, symptomSummary, topFoods } from '@/anal
 import { useFoodNotes, useRangeData } from '@/analysis/useAnalysis';
 import { updateSettings } from '@/db/repo';
 import { patternAlerts, sortAlerts, stoolAlerts, symptomAlerts, ALERT_LEVEL_INFO, type MedicalAlert } from '@/domain/alerts';
-import { addDays, dayKey, formatDateTime, formatLongDate, formatShortDate, todayKey } from '@/domain/dates';
+import { addDays, dayEnd, dayKey, dayStart, formatDateTime, formatLongDate, formatShortDate, todayKey } from '@/domain/dates';
 import { BRISTOL, TOLERANCE } from '@/domain/labels';
-import { getMode } from '@/db/db';
+import { getDb, getMode } from '@/db/db';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { analyzeFasting } from '@/analysis/fasting';
 import { useSettings } from '@/lib/hooks';
 import { navigate } from '@/lib/router';
 import { Button, Segmented, TextArea, cx, errorMessage, toneBg, useToast } from '@/components/ui';
@@ -40,6 +42,8 @@ export function ReportScreen({ days }: { days: number }) {
   const toast = useToast();
   const [consult, setConsult] = useState(settings.consultNotes);
   const [generatedAt] = useState(() => Date.now());
+  const fasts = useLiveQuery(() => getDb().fasts.where('startAt').between(dayStart(from), dayEnd(to), true, false).toArray(), [from, to]);
+  const fasting = useMemo(() => (data && fasts?.length ? analyzeFasting({ ...data, fasts, threshold: settings.analysisThreshold, now: generatedAt }) : null), [data, fasts, settings.analysisThreshold, generatedAt]);
 
   useEffect(() => setConsult(settings.consultNotes), [settings.consultNotes]);
 
@@ -299,6 +303,17 @@ export function ReportScreen({ days }: { days: number }) {
                 <Stat label="Agua media" value={fmt1(r.factors.water, ' vasos')} />
               </div>
             </Section>
+
+            {fasting && (
+              <Section title="Ayuno intermitente">
+                <div className="grid grid-cols-3 gap-2">
+                  <Stat label="Ayunos terminados" value={String(fasting.fasts)} />
+                  <Stat label="Con meta cumplida" value={String(fasting.completed)} />
+                  <Stat label="Duración media" value={fmt1(fasting.avgHours, ' h')} />
+                </div>
+                <p className="mt-2 text-sm">{fasting.message}</p>
+              </Section>
+            )}
 
             <Section title="Mi tolerancia alimentaria">
               {tolerance.length ? (

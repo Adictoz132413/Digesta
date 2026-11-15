@@ -82,6 +82,26 @@ El asistente organiza la ficha (tipo de comida, hora, alimentos, cantidades, pre
 
 **Privacidad de la voz.** La interpretación (`src/voice/nlu.ts` y `src/voice/dialog.ts`) se hace con reglas y diccionarios en el teléfono: ningún texto se envía a un servicio de IA. La conversión de **voz a texto** la hace Chrome: si el teléfono permite reconocimiento en el dispositivo, se usa; si no, Chrome puede enviar el audio a Google, y la app lo explica y pide permiso antes del primer uso. Alternativa 100 % local: el micrófono del teclado (Gboard) con dictado sin conexión, escribiendo en el campo del asistente.
 
+### Ayuno intermitente
+
+Desde **Hoy → Ayuno intermitente** puedes planear un día de ayuno y seguirlo:
+
+- **Precauciones primero**: la primera vez se muestran los casos en que no conviene ayunar sin orientación profesional (embarazo o lactancia, diabetes con insulina o hipoglucemiantes, trastornos de la conducta alimentaria, bajo peso, menores de 18, enfermedad renal, hepática o cardíaca) y las señales para romper el ayuno de inmediato.
+- **Plan del día**: eliges 12:12, 14:10, 16:8, 18:6 o tus propias horas (8–24 h) y la hora de tu última comida («Esta noche 8:00 p. m.»), y la app te muestra a qué hora puedes volver a comer y hasta cuándo va la ventana de comida. Puedes empezarlo ya o programarlo.
+- **Temporizador** con la fase aproximada en la que estás, avisos al empezar un ayuno programado y al cumplir la meta (con permiso de notificaciones, mientras la app esté abierta).
+- **Romper el ayuno**: al registrar una comida que lo rompe (por formulario o por voz), DIGESTA lo termina sola a esa hora; agua, tinto o aromática sin azúcar no lo rompen. Al terminarlo puedes anotar hambre, energía y cómo te fue.
+- **Tu digestión y el ayuno**: compara las molestias después de la comida que rompe el ayuno con las de tus otras comidas, y los días con y sin ayuno (síntomas, digestión, heces blandas o duras).
+- **Por voz**: «empiezo el ayuno», «empecé a ayunar a las 8 de la noche», «rompí el ayuno con una arepa y un tinto».
+- Guía con qué tomar durante el ayuno, cómo romperlo sin molestias y consejos si entrenas. Los ayunos se incluyen en la copia de seguridad, el CSV y el informe.
+
+Lo que dice la evidencia (resumen usado en la app):
+
+- Para bajar de peso, el ayuno intermitente rinde en general igual que reducir calorías sin horario ([metaanálisis en red de 99 ensayos, BMJ 2025;389:e082007](https://sciencemediacentre.es/en/node/5424); [revisión en mujeres, Frontiers in Nutrition 2025](https://www.frontiersin.org/journals/nutrition/articles/10.3389/fnut.2025.1664412/full)).
+- El paso de glucosa a grasa y cetonas ocurre entre ~12 y 36 h y varía entre personas ([Anton y col., *Flipping the Metabolic Switch*, Obesity 2018](https://pmc.ncbi.nlm.nih.gov/articles/PMC5783752)); la idea de que la autofagia «empieza a las 16 h» no está demostrada en humanos.
+- Con entrenamiento de fuerza y proteína suficiente, el 16:8 fue compatible con ganar músculo ([JISSN 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC12006946/)).
+- El resumen de congreso de 2024 que asoció ventanas de 8 h con más mortalidad cardiovascular fue muy criticado por sus limitaciones ([respuesta colectiva de investigadores](https://cms.ahs.uic.edu/inside-ahs/wp-content/uploads/sites/12/2024/04/Collective-Reponse-to-AHA-press-release-on-TRE.pdf)).
+- En la digestión hay poca evidencia y mucha variación individual; comidas grandes al romper el ayuno pueden dar hinchazón y el ayuno puede empeorar reflujo o estreñimiento en algunas personas. Por eso DIGESTA lo mide con tus propios datos.
+
 ## 4. Cómo funciona el análisis de patrones
 
 El motor (`src/analysis/engine.ts`) corre 100 % en el teléfono:
@@ -120,7 +140,7 @@ Desde **Ajustes** puedes: exportar e importar una copia completa en JSON (incluy
 
 ## 6. Datos de demostración
 
-En *Ajustes → Modo demostración* se abre una base **separada** (`digesta-demo`) con 60 días de datos ficticios y patrones sembrados (leche → hinchazón, fríjoles abundantes → gases, ají → acidez). Una franja ámbar lo indica siempre. Tus datos reales (`digesta`) no se tocan; al salir vuelves a ellos.
+En *Ajustes → Modo demostración* se abre una base **separada** (`digesta-demo`) con 60 días de datos ficticios y patrones sembrados (leche → hinchazón, fríjoles abundantes → gases, ají → acidez) y ayunos 16:8 cada cuatro días. Una franja ámbar lo indica siempre. Tus datos reales (`digesta`) no se tocan; al salir vuelves a ellos.
 
 ## 7. Precauciones médicas
 
@@ -138,7 +158,7 @@ Digesta/
 │  ├─ db/           Dexie (IndexedDB), validación zod, repositorio, respaldo JSON, CSV, datos demo
 │  ├─ analysis/     motor de asociaciones, estadísticas y hooks reactivos
 │  ├─ components/   UI accesible (Radix Dialog), ilustraciones Bristol y mapa abdominal
-│  ├─ features/     today, diary, entries (formularios), assistant (voz), tolerance, patterns, calendar, reports, settings
+│  ├─ features/     today, diary, entries (formularios), assistant (voz), fasting (ayuno), tolerance, patterns, calendar, reports, settings
 │  ├─ voice/        intérprete de lenguaje local (nlu), motor de diálogo y voz (reconocimiento/lectura)
 │  └─ lib/          enrutador por hash, tema, fotos, descargas, recordatorios
 └─ tests/           Vitest + fake-indexeddb

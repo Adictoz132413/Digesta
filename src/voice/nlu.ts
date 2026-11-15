@@ -101,6 +101,8 @@ export interface ParseResult {
   quantityOnly?: Exclude<QuantityLevel, 'personalizada'>;
   /** Número suelto (respuestas a "¿de 0 a 10?" o "¿tipo de Bristol?"). */
   number?: number;
+  /** Inicio o fin de un ayuno intermitente ("empiezo el ayuno", "rompí el ayuno"). */
+  fast?: { kind: 'start' | 'end'; at: number };
   /** true si no se reconoció nada útil. */
   empty: boolean;
 }
@@ -227,7 +229,8 @@ const STOP = new Set(
     'medio media hora horas minutos minuto vez veces todo toda todos todas poquito poco poca mucho mucha bastante harto tipo estilo ' +
     'mama papa novia novio esposa esposo amigos amigo amiga familia trabajo oficina restaurante calle gimnasio gym entreno entrenar ' +
     'favor gracias listo ok vale dale bueno super tan pues entonces osea igual tal vez quizas creo parece senti siento cayo quede ' +
-    'acompanado acompanada acompanamiento plus adicional extra lado parte'
+    'acompanado acompanada acompanamiento plus adicional extra lado parte ' +
+    'ayuno ayunar ayunando rompi rompo termine termino empiezo empece inicio inicie arranco arranque comienzo comence'
   ).split(' '),
 );
 
@@ -738,6 +741,14 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   const lone = whole.match(/^(?:tipo |el |la |un |una |como un |como una )?(\d{1,2})(?: de 10| sobre 10)?$/);
   if (lone) res.number = Number(lone[1]);
 
+  // Ayuno intermitente
+  const fastStart = /\b(empiezo|empece|inicio|inicie|arranco|arranque|comienzo|comence|empezar|iniciar|arrancar|comenzar)\b(?:\s+\w+){0,3}\s+(ayuno|ayunar|a ayunar)\b/.test(whole);
+  const fastEnd = /\b(termine|termino|rompi|rompo|acabe|finalice|rompiendo|terminar|romper)\b(?:\s+\w+){0,3}\s+(ayuno)\b/.test(whole);
+  if (fastStart || fastEnd) {
+    res.fast = { kind: fastEnd ? 'end' : 'start', at: parseTime(whole, ctx.now) ?? ctx.now };
+    res.empty = false;
+  }
+
   // Quitar alimentos
   const rm = whole.match(REMOVE_RE);
   if (rm) {
@@ -887,7 +898,14 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
     else if (/\b(normal|normales)\b/.test(whole)) res.quantityOnly = 'normal';
   }
 
+  // "Empiezo el ayuno a las 8": la hora pertenece al ayuno, no es una corrección suelta
+  if (res.fast) {
+    res.timeOnly = undefined;
+    res.mealTypeOnly = undefined;
+  }
+
   res.empty =
+    !res.fast &&
     !res.meals.length &&
     !res.symptoms.length &&
     !res.stools.length &&

@@ -6,12 +6,13 @@
  *  - Leche → hinchazón entre 1 y 4 horas después (frecuente).
  *  - Fríjoles en cantidad abundante → gases entre 2 y 5 horas (en poca cantidad casi nunca).
  *  - Ají / salsa picante → acidez entre 1 y 3 horas.
+ *  - Cada 4 días, un ayuno 16:8 desde la cena hasta el almuerzo (sin desayuno).
  */
 import type { DigestaDB } from './db';
 import { keysOfItems, newId, normalizeItem } from './repo';
 import { addDays, dayKey, dayStart, HOUR } from '@/domain/dates';
 import { deriveFlags, foodKey } from '@/domain/foods';
-import { DEFAULT_SETTINGS, type BristolType, type DailyLog, type Meal, type MealItem, type MealType, type QuantityLevel, type Stool, type Symptom } from '@/domain/types';
+import { DEFAULT_SETTINGS, type BristolType, type DailyLog, type Fast, type Meal, type MealItem, type MealType, type QuantityLevel, type Stool, type Symptom } from '@/domain/types';
 
 /** PRNG determinista (mulberry32) para datos reproducibles. */
 function rng(seed: number) {
@@ -36,6 +37,8 @@ export async function seedDemo(db: DigestaDB, days = 60, now = Date.now()): Prom
   const symptoms: Symptom[] = [];
   const stools: Stool[] = [];
   const logs: DailyLog[] = [];
+  const fasts: Fast[] = [];
+  let lastDinnerAt: number | undefined;
   const today = dayKey(now);
 
   const breakfasts: (() => MealItem[])[] = [
@@ -95,10 +98,31 @@ export async function seedDemo(db: DigestaDB, days = 60, now = Date.now()): Prom
     const base = dayStart(key);
     const dayMeals: Meal[] = [];
     const supplements = chance(0.7) ? ['Creatina'] : [];
-    dayMeals.push(addMeal(base + (6.5 + r()) * HOUR, 'desayuno', pick(breakfasts)(), { supplements }));
-    dayMeals.push(addMeal(base + (12.3 + r()) * HOUR, 'almuerzo', pick(lunches)()));
+    // Cada 4 días: ayuno 16:8 desde la cena anterior hasta el almuerzo (sin desayuno)
+    const fastingDay = d % 4 === 1 && lastDinnerAt !== undefined;
+    const breakfastAt = base + (6.5 + r()) * HOUR;
+    const breakfastItems = pick(breakfasts)();
+    if (!fastingDay) dayMeals.push(addMeal(breakfastAt, 'desayuno', breakfastItems, { supplements }));
+    const lunch = addMeal(base + (12.3 + r()) * HOUR, 'almuerzo', pick(lunches)(), fastingDay ? { supplements } : {});
+    dayMeals.push(lunch);
+    if (fastingDay && lastDinnerAt !== undefined && lunch.at <= now) {
+      fasts.push({
+        id: newId(),
+        startAt: lastDinnerAt,
+        endAt: lunch.at,
+        targetHours: 16,
+        protocol: '16:8',
+        brokenByMealId: lunch.id,
+        hunger: 4 + (d % 4),
+        energy: d % 3 === 0 ? 3 : 2,
+        createdAt: lastDinnerAt,
+        updatedAt: lunch.at,
+      });
+    }
     if (chance(0.6)) dayMeals.push(addMeal(base + (16 + r()) * HOUR, 'merienda', pick(snacks)()));
-    dayMeals.push(addMeal(base + (19 + r() * 1.5) * HOUR, 'cena', pick(dinners)()));
+    const dinner = addMeal(base + (19 + r() * 1.5) * HOUR, 'cena', pick(dinners)());
+    dayMeals.push(dinner);
+    lastDinnerAt = dinner.at;
 
     // Patrones sembrados
     for (const m of dayMeals) {
@@ -168,6 +192,7 @@ export async function seedDemo(db: DigestaDB, days = 60, now = Date.now()): Prom
     await db.symptoms.bulkPut(symptoms);
     await db.stools.bulkPut(stools);
     await db.dailyLogs.bulkPut(logs);
+    await db.fasts.bulkPut(fasts);
     await db.favorites.bulkPut([
       {
         id: newId(),
@@ -181,6 +206,6 @@ export async function seedDemo(db: DigestaDB, days = 60, now = Date.now()): Prom
       },
     ]);
     await db.foodNotes.put({ key: 'leche', name: 'Leche', manualStatus: 'a_medias', note: 'Probar con leche deslactosada.', updatedAt: now });
-    await db.settings.put({ key: 'settings', value: { ...DEFAULT_SETTINGS, disclaimerAccepted: true } });
+    await db.settings.put({ key: 'settings', value: { ...DEFAULT_SETTINGS, disclaimerAccepted: true, fastingAck: true, fastingProtocol: '16:8' } });
   });
 }

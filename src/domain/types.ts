@@ -220,6 +220,35 @@ export interface FoodNote {
   updatedAt: number;
 }
 
+// ───────────────────────── Ayuno intermitente ─────────────────────────
+
+export type FastProtocol = '12:12' | '14:10' | '16:8' | '18:6' | 'personalizado';
+
+export interface Fast {
+  id: ID;
+  /** Inicio del ayuno (puede estar en el futuro si está programado). */
+  startAt: number;
+  /** Fin real del ayuno (al romperlo). Sin valor = programado o en curso. */
+  endAt?: number;
+  /** Duración objetivo en horas. */
+  targetHours: number;
+  protocol: FastProtocol;
+  /** Comida con la que se rompió el ayuno, si se registró. */
+  brokenByMealId?: ID;
+  /** Hambre al terminar (0–10). */
+  hunger?: number;
+  /** Energía al terminar: 1 baja · 2 normal · 3 alta. */
+  energy?: 1 | 2 | 3;
+  /** Molestias durante el ayuno (mareo, dolor de cabeza…). */
+  sideEffects?: string[];
+  notes?: string;
+  /** Avisos ya mostrados (inicio programado y meta cumplida). */
+  notifiedStart?: boolean;
+  notifiedGoal?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ───────────────────────── Configuración ─────────────────────────
 
 export type ThemePref = 'sistema' | 'claro' | 'oscuro';
@@ -246,6 +275,12 @@ export interface Settings {
   consultNotes: string;
   /** Umbral de intensidad (0–10) a partir del cual un síntoma cuenta como episodio para el análisis. */
   analysisThreshold: number;
+  /** La persona leyó las precauciones del ayuno intermitente. */
+  fastingAck: boolean;
+  /** Protocolo de ayuno preferido. */
+  fastingProtocol: FastProtocol;
+  /** Horas objetivo si el protocolo es personalizado. */
+  fastingCustomHours: number;
 }
 
 export interface SettingRow {
@@ -261,4 +296,7 @@ export const DEFAULT_SETTINGS: Settings = {
   disclaimerAccepted: false,
   consultNotes: '',
   analysisThreshold: 3,
+  fastingAck: false,
+  fastingProtocol: '14:10',
+  fastingCustomHours: 13,
 };

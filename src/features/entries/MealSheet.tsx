@@ -9,7 +9,8 @@ import { getDb } from '@/db/db';
 import { deleteMeal, foodHistory, markFavoriteUsed, saveCustomFood, saveFavorite, saveMeal, supplementHistory } from '@/db/repo';
 import { catalogFood, deriveFlags, foodKey, prettyName, searchFoods } from '@/domain/foods';
 import { FEELINGS, MEAL_FLAGS, MEAL_TYPES, PREPARATIONS, QUANTITIES, mealTypeLabel, suggestMealType, symptomLabel } from '@/domain/labels';
-import { formatDateTime } from '@/domain/dates';
+import { formatDateTime, formatDuration } from '@/domain/dates';
+import { maybeEndFastWithMeal, reopenFast } from '@/db/fasting';
 import type { FeelingAfter, Meal, MealFlag, MealItem, MealType, Preparation } from '@/domain/types';
 import { storePhoto } from '@/lib/images';
 import { usePhotoUrl, useSettings } from '@/lib/hooks';
@@ -130,7 +131,7 @@ export function MealSheet({ open, onClose, meal, template, initialAt, onAddSympt
     }
     setSaving(true);
     try {
-      await saveMeal({
+      const saved = await saveMeal({
         id: meal?.id,
         at: d.at,
         mealType: d.mealType,
@@ -144,8 +145,12 @@ export function MealSheet({ open, onClose, meal, template, initialAt, onAddSympt
       if (saveAsFav) {
         await saveFavorite({ name: favName.trim() || `${mealTypeLabel(d.mealType)}: ${d.items.map((i) => i.name).join(', ')}`.slice(0, 80), mealType: d.mealType, items: d.items, flags, supplements: d.supplements });
       }
-      toast(meal ? 'Comida actualizada' : 'Comida guardada');
       onClose();
+      const ended = meal ? undefined : await maybeEndFastWithMeal(saved);
+      if (ended) {
+        const h = (ended.endAt! - ended.startAt) / 3600_000;
+        toast(`Comida guardada. Terminaste tu ayuno de ${formatDuration(Math.round(h * 60))}.`, { action: { label: 'No lo rompió', onClick: () => void reopenFast(ended.id) } });
+      } else toast(meal ? 'Comida actualizada' : 'Comida guardada');
     } catch (e) {
       setError(errorMessage(e));
     } finally {

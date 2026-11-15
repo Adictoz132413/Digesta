@@ -14,6 +14,7 @@ import { patternAlerts, sortAlerts, stoolAlerts, symptomAlerts, type MedicalAler
 import type { DigestionRating } from '@/domain/types';
 import { dayStatus } from '@/analysis/stats';
 import { useEntry } from '@/features/entries/EntryProvider';
+import { FastingCard } from '@/features/fasting/FastingCard';
 import { MealRow, StoolRow, SymptomRow } from '@/components/rows';
 import { BristolIcon } from '@/components/illustrations';
 import { Button, Card, SectionTitle, cx, toneBg, toneDot, useToast, type Tone } from '@/components/ui';
@@ -189,6 +190,8 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
           <p className="text-xs text-muted">Pueden influir en tu digestión</p>
         </button>
       </div>
+
+      <FastingCard now={now} />
 
       {/* Línea de tiempo */}
       <SectionTitle

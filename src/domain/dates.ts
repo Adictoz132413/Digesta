@@ -85,6 +85,7 @@ export function relativeDayLabel(key: string): string {
   const today = todayKey();
   if (key === today) return 'Hoy';
   if (key === addDays(today, -1)) return 'Ayer';
+  if (key === addDays(today, 1)) return 'Mañana';
   const s = formatLongDate(key);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

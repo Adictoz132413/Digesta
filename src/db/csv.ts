@@ -17,7 +17,7 @@ import {
   zoneLabel,
   FEELINGS,
 } from '@/domain/labels';
-import type { DailyLog, Meal, Stool, Symptom } from '@/domain/types';
+import type { DailyLog, Fast, Meal, Stool, Symptom } from '@/domain/types';
 
 export const CSV_SEP = ';';
 
@@ -107,5 +107,30 @@ export function dailyCsv(logs: DailyLog[]): string {
       l.exercise?.intensity ?? '',
       l.notes ?? '',
     ]);
+  return toCsv(header, rows);
+}
+
+export function fastsCsv(fasts: Fast[]): string {
+  const header = ['Inicio (fecha)', 'Inicio (hora)', 'Fin (fecha)', 'Fin (hora)', 'Duración (h)', 'Meta (h)', 'Esquema', 'Meta cumplida', 'Hambre (0-10)', 'Energía', 'Cómo le fue', 'Notas'];
+  const rows = [...fasts]
+    .filter((f) => f.endAt !== undefined)
+    .sort((a, b) => a.startAt - b.startAt)
+    .map((f) => {
+      const h = (f.endAt! - f.startAt) / 3600_000;
+      return [
+        dayKey(f.startAt),
+        formatTime(f.startAt),
+        dayKey(f.endAt!),
+        formatTime(f.endAt!),
+        h.toFixed(1).replace('.', ','),
+        f.targetHours,
+        f.protocol,
+        yn(h >= f.targetHours - 0.25),
+        f.hunger ?? '',
+        f.energy ? ['', 'Baja', 'Normal', 'Alta'][f.energy] : '',
+        (f.sideEffects ?? []).join(', '),
+        f.notes ?? '',
+      ];
+    });
   return toCsv(header, rows);
 }

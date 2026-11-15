@@ -120,3 +120,22 @@ export function useReminderScheduler(): void {
     };
   }, []);
 }
+
+/** Aviso genérico: notificación del sistema si hay permiso; si no, aviso dentro de la app. */
+export async function notify(opts: { tag: string; title: string; body: string; url: string }): Promise<void> {
+  const url = appUrl(opts.url);
+  if (notificationPermission() === 'granted') {
+    try {
+      const reg = 'serviceWorker' in navigator ? await Promise.race([navigator.serviceWorker.ready, new Promise<null>((res) => setTimeout(() => res(null), 3000))]) : null;
+      if (reg) {
+        await reg.showNotification(opts.title, { body: opts.body, tag: `digesta-${opts.tag}`, icon: 'icon-192.png', badge: 'icon-192.png', data: { url } });
+        return;
+      }
+      new Notification(opts.title, { body: opts.body, tag: `digesta-${opts.tag}`, icon: 'icon-192.png' });
+      return;
+    } catch {
+      /* continuar con el aviso dentro de la app */
+    }
+  }
+  bannerStore.push({ id: `${opts.tag}-${Date.now()}`, title: opts.title, body: opts.body, url: opts.url });
+}

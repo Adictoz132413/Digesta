@@ -80,6 +80,8 @@ export interface Reply {
   save?: boolean;
   /** true si se canceló todo. */
   cancelled?: boolean;
+  /** Acción de ayuno a ejecutar (empezar o terminar). */
+  fast?: { kind: 'start' | 'end'; at: number };
 }
 
 export function emptySession(): Session {
@@ -586,7 +588,7 @@ export function merge(s: Session, p: ParseResult, now: number, raw?: string): st
         lastMeal.timeExplicit = true;
       }
       const shown = s.last?.kind === 'meal' || !s.last ? lastMeal?.at ?? p.timeOnly : p.timeOnly;
-      notes.push(`Cambié la hora a las ${formatTime(shown)}.`);
+      notes.push(`Cambié la hora a las ${formatTime(shown)}`);
     }
     if (p.feelingOnly && lastMeal) {
       lastMeal.feelingAfter = p.feelingOnly;
@@ -612,6 +614,14 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
   const s = clone(prev);
   const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods });
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
+
+  if (p.fast) {
+    // La acción de ayuno la ejecuta la pantalla; si además mencionó comida, se integra al borrador.
+    const notes = p.meals.length || p.symptoms.length || p.stools.length ? merge(s, { ...p, fast: undefined }, ctx.now, raw) : [];
+    const next = notes.length ? nextQuestion(s, ctx.now) : s.pending;
+    s.pending = next;
+    return { session: s, text: notes.join(' '), question: next, fast: p.fast };
+  }
 
   const q = s.pending;
   let ack: string[] = [];
