@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadDay } from '@/db/repo';
 import { addDays, dayKey, dayStart, formatMonth, relativeDayLabel, todayKey, weekStart, weekdayShort } from '@/domain/dates';
 import { DIGESTION, digestionLabel } from '@/domain/labels';
+import { hydrationSummary } from '@/domain/hydration';
 import { dayStatus, type DayTone } from '@/analysis/stats';
 import { useRangeData } from '@/analysis/useAnalysis';
 import { navigate } from '@/lib/router';
@@ -232,7 +233,7 @@ function DayDetail({ day }: { day: string }) {
           <span className={cx('rounded-full px-3 py-1 text-xs font-bold', toneBg[status.tone === 'none' ? 'none' : status.tone])}>{TONE_LABEL[status.tone]}</span>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-          <Fact icon={<Droplets size={16} />} label="Agua" value={log?.water !== undefined ? `${log.water} vasos` : '—'} />
+          <Fact icon={<Droplets size={16} />} label="Agua" value={hydrationSummary(log) || '—'} />
           <Fact icon={<Zap size={16} />} label="Estrés" value={log?.stress !== undefined ? `${log.stress}/10` : '—'} />
           <Fact icon={<Moon size={16} />} label="Sueño" value={log?.sleepHours !== undefined ? `${log.sleepHours} h${log.sleepQuality ? ` · ${['', 'mala', 'regular', 'buena'][log.sleepQuality]}` : ''}` : '—'} />
           <Fact icon={<Dumbbell size={16} />} label="Ejercicio" value={log?.exercise ? `${log.exercise.type} · ${log.exercise.minutes} min` : '—'} />

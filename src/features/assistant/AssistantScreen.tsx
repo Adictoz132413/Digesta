@@ -32,6 +32,8 @@ import {
 import { useEntry } from '@/features/entries/EntryProvider';
 import { Button, IconButton, cx, errorMessage, inputClass, useToast } from '@/components/ui';
 import { navigate } from '@/lib/router';
+import { useSettings } from '@/lib/hooks';
+import { formatMl, glassesToMl } from '@/domain/hydration';
 
 interface Msg {
   id: number;
@@ -77,6 +79,9 @@ export function AssistantScreen() {
   const history = useLiveQuery(() => foodHistory(), [], []);
   const custom = useLiveQuery(() => getDb().customFoods.toArray(), [], []);
   const extraFoods = [...history.map((h) => ({ name: h.name, key: h.key })), ...custom.map((c) => ({ name: c.name, key: c.key }))];
+  const settings = useSettings();
+  const bottleRef = useRef(settings.bottleMl);
+  bottleRef.current = settings.bottleMl;
   const extraRef = useRef(extraFoods);
   extraRef.current = extraFoods;
 
@@ -178,14 +183,16 @@ export function AssistantScreen() {
         const day = dayKey(now);
         if (rec.water) {
           const log = await getDailyLog(day);
-          await patchDailyLog(day, { water: Math.min(40, (log?.water ?? 0) + rec.water) });
+          await patchDailyLog(day, { water: Math.min(40, Math.round(((log?.water ?? 0) + rec.water) * 100) / 100) });
         }
+        if (rec.hydration) await patchDailyLog(day, { hydration: rec.hydration });
         if (rec.digestion) await patchDailyLog(day, { digestion: rec.digestion });
         const parts = [
           rec.meals.length && `${rec.meals.length} ${rec.meals.length === 1 ? 'comida' : 'comidas'}`,
           rec.symptoms.length && `${rec.symptoms.length} ${rec.symptoms.length === 1 ? 'síntoma' : 'síntomas'}`,
           rec.stools.length && `${rec.stools.length} ${rec.stools.length === 1 ? 'deposición' : 'deposiciones'}`,
-          rec.water && `${rec.water} ${rec.water === 1 ? 'vaso' : 'vasos'} de agua`,
+          rec.water && `≈ ${formatMl(glassesToMl(rec.water))} de agua`,
+          rec.hydration && 'tu estimado de agua',
           rec.digestion && 'tu valoración del día',
         ].filter(Boolean);
         setSession(emptySession());
@@ -210,7 +217,7 @@ export function AssistantScreen() {
       const t = text.trim();
       if (!t) return;
       push({ role: 'user', text: t });
-      const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current });
+      const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current, bottleMl: bottleRef.current });
       setSession(r.session);
       if (r.fast) {
         void runFast(r.fast).then((msg) => respond(`${msg}${r.text ? ` ${r.text}` : ''}`, r.question));

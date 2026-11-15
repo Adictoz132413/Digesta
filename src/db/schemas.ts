@@ -94,7 +94,8 @@ export const symptomSchema = z
 export const dailyLogSchema = z.object({
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   digestion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
-  water: z.number().int().min(0).max(40).optional(),
+  water: z.number().min(0).max(40).optional(),
+  hydration: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   stress: z.number().int().min(0).max(10).optional(),
   sleepHours: z.number().min(0).max(24).optional(),
   sleepQuality: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
@@ -160,6 +161,8 @@ export const fastSchema = z
 export const settingsSchema = z.object({
   theme: z.enum(['sistema', 'claro', 'oscuro']),
   waterGoal: z.number().int().min(1).max(30),
+  hydrationMode: z.enum(['sorbos', 'botella', 'vasos']),
+  bottleMl: z.number().int().min(200).max(3000),
   reminders: z.array(reminderSchema).max(30),
   photoMaxSide: z.number().int().min(320).max(2048),
   disclaimerAccepted: z.boolean(),

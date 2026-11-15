@@ -82,6 +82,16 @@ El asistente organiza la ficha (tipo de comida, hora, alimentos, cantidades, pre
 
 **Privacidad de la voz.** La interpretación (`src/voice/nlu.ts` y `src/voice/dialog.ts`) se hace con reglas y diccionarios en el teléfono: ningún texto se envía a un servicio de IA. La conversión de **voz a texto** la hace Chrome: si el teléfono permite reconocimiento en el dispositivo, se usa; si no, Chrome puede enviar el audio a Google, y la app lo explica y pide permiso antes del primer uso. Alternativa 100 % local: el micrófono del teclado (Gboard) con dictado sin conexión, escribiendo en el campo del asistente.
 
+### Hidratación a tu manera
+
+En Hoy (o en Ajustes) eliges cómo tomas agua:
+
+- **A sorbos** (predeterminado): si tomas agua poco a poco durante el día, basta con un estimado de un toque: *poca*, *normal* o *bastante*.
+- **En botella**: eliges el tamaño de tu botella (500 ml a 1,5 L) y sumas cuartos o medias botellas.
+- **Por vasos**: vasos de unos 250 ml con una meta diaria.
+
+Por voz también funciona: «hoy tomé poca agua», «me tomé media botella de agua», «tomé agua a sorbos» (y el asistente te pregunta cuánta en total).
+
 ### Ayuno intermitente
 
 Desde **Hoy → Ayuno intermitente** puedes planear un día de ayuno y seguirlo:

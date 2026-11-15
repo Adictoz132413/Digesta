@@ -12,7 +12,8 @@ import { seedDemo } from '@/db/demo';
 import { deleteAllPhotos, newId, updateSettings, wipeAll } from '@/db/repo';
 import { formatDateTime, formatHHmm, todayKey } from '@/domain/dates';
 import { EMERGENCY_LINE } from '@/domain/alerts';
-import type { Reminder, ReminderKind, Settings, ThemePref } from '@/domain/types';
+import type { HydrationMode, Reminder, ReminderKind, Settings, ThemePref } from '@/domain/types';
+import { BOTTLE_SIZES, HYDRATION_MODES, formatMl } from '@/domain/hydration';
 import { downloadText, readFileText } from '@/lib/download';
 import { useSettings } from '@/lib/hooks';
 import { formatBytes, photoStorageUsage } from '@/lib/images';
@@ -59,13 +60,36 @@ export function SettingsScreen() {
 
       <SectionTitle>Hidratación y análisis</SectionTitle>
       <Card>
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="font-medium">Meta diaria de agua</p>
-            <p className="text-sm text-muted">Vasos de unos 250 ml.</p>
+        <p className="font-medium">¿Cómo tomas agua?</p>
+        <Segmented<HydrationMode>
+          className="mt-2"
+          label="Forma de registrar el agua"
+          value={settings.hydrationMode}
+          onChange={(hydrationMode) => save({ hydrationMode })}
+          options={HYDRATION_MODES.map((m) => ({ value: m.value, label: m.label }))}
+        />
+        <p className="mt-1 text-sm text-muted">{HYDRATION_MODES.find((m) => m.value === settings.hydrationMode)?.description}</p>
+        {settings.hydrationMode === 'botella' && (
+          <div className="mt-3">
+            <p className="mb-2 text-sm font-semibold">Tamaño de tu botella</p>
+            <div className="flex flex-wrap gap-2">
+              {BOTTLE_SIZES.map((ml) => (
+                <Button key={ml} size="sm" variant={settings.bottleMl === ml ? 'soft' : 'secondary'} aria-pressed={settings.bottleMl === ml} onClick={() => save({ bottleMl: ml })}>
+                  {formatMl(ml)}
+                </Button>
+              ))}
+            </div>
           </div>
-          <Stepper label="Meta de vasos de agua" value={settings.waterGoal} onChange={(waterGoal) => save({ waterGoal })} min={1} max={30} />
-        </div>
+        )}
+        {settings.hydrationMode !== 'sorbos' && (
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-medium">Meta diaria de agua</p>
+              <p className="text-sm text-muted">≈ {formatMl(settings.waterGoal * 250)} ({settings.waterGoal} vasos de 250 ml).</p>
+            </div>
+            <Stepper label="Meta de vasos de agua" value={settings.waterGoal} onChange={(waterGoal) => save({ waterGoal })} min={1} max={30} />
+          </div>
+        )}
         <div className="mt-4 border-t border-border pt-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">

@@ -4,7 +4,7 @@
  * línea de tiempo y la pregunta de cierre "¿Cómo estuvo tu digestión hoy?".
  */
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, ChevronRight, Droplets, Mic, Moon, Plus, Utensils } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Mic, Moon, Plus, Utensils } from 'lucide-react';
 import { Fragment, useEffect, useMemo } from 'react';
 import { getDb } from '@/db/db';
 import { isOngoing, loadDay, patchDailyLog } from '@/db/repo';
@@ -15,6 +15,7 @@ import type { DigestionRating } from '@/domain/types';
 import { dayStatus } from '@/analysis/stats';
 import { useEntry } from '@/features/entries/EntryProvider';
 import { FastingCard } from '@/features/fasting/FastingCard';
+import { HydrationCard } from './HydrationCard';
 import { MealRow, StoolRow, SymptomRow } from '@/components/rows';
 import { BristolIcon } from '@/components/illustrations';
 import { Button, Card, SectionTitle, cx, toneBg, toneDot, useToast, type Tone } from '@/components/ui';
@@ -58,7 +59,6 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
   const ongoing = symptoms.filter((s) => isOngoing(s, now));
   const prevOngoing = (yesterday?.symptoms ?? []).filter((s) => isOngoing(s, now));
   const maxInt = Math.max(0, ...symptoms.map((s) => s.intensity));
-  const water = log?.water ?? 0;
   const hour = new Date(now).getHours();
   const evening = hour >= 18;
   const yesterdayUnrated = yesterday && !yesterday.log?.digestion && (yesterday.meals.length + yesterday.stools.length + yesterday.symptoms.length > 0) && hour < 14;
@@ -74,8 +74,6 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
     await patchDailyLog(day, { digestion: current === v ? undefined : v });
     if (current !== v) toast('¡Gracias! Quedó registrado.');
   };
-
-  const setWater = (n: number) => patchDailyLog(today, { water: Math.max(0, Math.min(40, n)) });
 
   const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
   const dateLabel = formatLongDate(now);
@@ -153,31 +151,7 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
 
       {/* Hidratación y factores */}
       <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-        <Card className="!p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-muted">
-                <Droplets size={15} className="text-primary" /> Hidratación (opcional)
-              </p>
-              <p className="tabular text-xl font-extrabold">
-                {water} <span className="text-sm font-semibold text-muted">/ {settings.waterGoal} vasos</span>
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" aria-label="Quitar un vaso de agua" onClick={() => setWater(water - 1)} disabled={water === 0} className="size-11 rounded-full border border-border text-xl font-bold disabled:opacity-40">
-                −
-              </button>
-              <button type="button" aria-label="Agregar un vaso de agua" onClick={() => setWater(water + 1)} className="size-11 rounded-full bg-primary text-xl font-bold text-on-primary">
-                +
-              </button>
-            </div>
-          </div>
-          <div className="mt-3 flex gap-1" aria-hidden>
-            {Array.from({ length: settings.waterGoal }, (_, i) => (
-              <span key={i} className={cx('h-2 flex-1 rounded-full', i < water ? 'bg-primary' : 'bg-surface-3')} />
-            ))}
-          </div>
-        </Card>
+        <HydrationCard day={today} log={log} settings={settings} />
         <button type="button" onClick={() => entry.openFactors(today)} className="rounded-3xl border border-border bg-surface p-4 text-left shadow-card">
           <p className="flex items-center gap-1.5 text-[13px] font-semibold text-muted">
             <Moon size={15} className="text-primary" /> Estrés, sueño y ejercicio

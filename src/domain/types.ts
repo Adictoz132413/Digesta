@@ -168,8 +168,10 @@ export interface DailyLog {
   /** YYYY-MM-DD local */
   day: string;
   digestion?: DigestionRating;
-  /** Vasos de agua (≈250 ml) */
+  /** Agua en vasos de ≈250 ml (admite fracciones: se usa también para botellas). */
   water?: number;
+  /** Estimado del día para quien toma agua a sorbos: 1 poca · 2 normal · 3 bastante. */
+  hydration?: HydrationLevel;
   /** 0–10 */
   stress?: number;
   sleepHours?: number;
@@ -252,6 +254,9 @@ export interface Fast {
 // ───────────────────────── Configuración ─────────────────────────
 
 export type ThemePref = 'sistema' | 'claro' | 'oscuro';
+/** Cómo prefiere registrar el agua: a sorbos (estimado), por botella o por vasos. */
+export type HydrationMode = 'sorbos' | 'botella' | 'vasos';
+export type HydrationLevel = 1 | 2 | 3;
 export type ReminderKind = 'comida' | 'deposicion' | 'resumen' | 'agua';
 
 export interface Reminder {
@@ -266,7 +271,11 @@ export interface Reminder {
 
 export interface Settings {
   theme: ThemePref;
+  /** Meta diaria de agua en vasos de 250 ml (8 ≈ 2 litros). */
   waterGoal: number;
+  hydrationMode: HydrationMode;
+  /** Tamaño de tu botella en ml (modo botella). */
+  bottleMl: number;
   reminders: Reminder[];
   /** Calidad/tamaño de foto comprimida */
   photoMaxSide: number;
@@ -291,6 +300,8 @@ export interface SettingRow {
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'sistema',
   waterGoal: 8,
+  hydrationMode: 'sorbos',
+  bottleMl: 600,
   reminders: [],
   photoMaxSide: 1024,
   disclaimerAccepted: false,

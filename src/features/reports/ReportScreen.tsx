@@ -11,6 +11,7 @@ import { updateSettings } from '@/db/repo';
 import { patternAlerts, sortAlerts, stoolAlerts, symptomAlerts, ALERT_LEVEL_INFO, type MedicalAlert } from '@/domain/alerts';
 import { addDays, dayEnd, dayKey, dayStart, formatDateTime, formatLongDate, formatShortDate, todayKey } from '@/domain/dates';
 import { BRISTOL, TOLERANCE } from '@/domain/labels';
+import { formatMl, glassesToMl, HYDRATION_LEVELS } from '@/domain/hydration';
 import { getDb, getMode } from '@/db/db';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { analyzeFasting } from '@/analysis/fasting';
@@ -109,7 +110,8 @@ export function ReportScreen({ days }: { days: number }) {
         stress: avg(logs.flatMap((l) => (l.stress !== undefined ? [l.stress] : []))),
         sleep: avg(logs.flatMap((l) => (l.sleepHours !== undefined ? [l.sleepHours] : []))),
         exercise: logs.filter((l) => l.exercise).length,
-        water: avg(logs.flatMap((l) => (l.water !== undefined ? [l.water] : []))),
+        water: avg(logs.flatMap((l) => (l.water ? [glassesToMl(l.water)] : []))),
+        hydration: ([1, 2, 3] as const).map((h) => logs.filter((l) => l.hydration === h).length),
         supplements: [...new Set(meals.flatMap((m) => m.supplements))],
       },
     };
@@ -300,8 +302,13 @@ export function ReportScreen({ days }: { days: number }) {
                 <Stat label="Estrés medio" value={fmt1(r.factors.stress, '/10')} />
                 <Stat label="Sueño medio" value={fmt1(r.factors.sleep, ' h')} />
                 <Stat label="Días con ejercicio" value={String(r.factors.exercise)} />
-                <Stat label="Agua media" value={fmt1(r.factors.water, ' vasos')} />
+                <Stat label="Agua media" value={r.factors.water === null ? '—' : formatMl(r.factors.water)} />
               </div>
+              {r.factors.hydration.some((n) => n > 0) && (
+                <p className="mt-2 text-sm">
+                  Agua a sorbos (estimado del día): {HYDRATION_LEVELS.map((h, i) => `${h.label.toLowerCase()} ${r.factors.hydration[i]} día${r.factors.hydration[i] === 1 ? '' : 's'}`).join(' · ')}.
+                </p>
+              )}
             </Section>
 
             {fasting && (

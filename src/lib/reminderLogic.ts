@@ -7,7 +7,7 @@ export const REMINDER_KINDS: { value: ReminderKind; label: string; body: string;
   { value: 'comida', label: 'Registrar comida', body: '¿Ya registraste lo que comiste? Toma solo unos segundos.', url: '#/hoy?nuevo=comida' },
   { value: 'deposicion', label: 'Registrar deposición', body: 'Si fuiste al baño, registra tu deposición.', url: '#/hoy?nuevo=deposicion' },
   { value: 'resumen', label: 'Resumen del día', body: '¿Cómo estuvo tu digestión hoy? Completa tu resumen diario.', url: '#/hoy' },
-  { value: 'agua', label: 'Tomar agua', body: 'Recuerda hidratarte y anotar tus vasos de agua.', url: '#/hoy' },
+  { value: 'agua', label: 'Tomar agua', body: 'Recuerda tomar unos sorbos de agua y, al final del día, anotar cuánta tomaste.', url: '#/hoy' },
 ];
 
 export const reminderInfo = (k: ReminderKind) => REMINDER_KINDS.find((r) => r.value === k) ?? REMINDER_KINDS[0];

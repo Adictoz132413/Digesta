@@ -18,6 +18,7 @@ import {
   FEELINGS,
 } from '@/domain/labels';
 import type { DailyLog, Fast, Meal, Stool, Symptom } from '@/domain/types';
+import { glassesToMl, hydrationLabel } from '@/domain/hydration';
 
 export const CSV_SEP = ';';
 
@@ -91,14 +92,15 @@ export function symptomsCsv(symptoms: Symptom[]): string {
 }
 
 export function dailyCsv(logs: DailyLog[]): string {
-  const header = ['Fecha', 'Digestión del día', 'Vasos de agua', 'Estrés (0-10)', 'Horas de sueño', 'Calidad del sueño', 'Ejercicio', 'Minutos de ejercicio', 'Intensidad ejercicio', 'Notas'];
+  const header = ['Fecha', 'Digestión del día', 'Agua (ml aprox.)', 'Agua estimada (a sorbos)', 'Estrés (0-10)', 'Horas de sueño', 'Calidad del sueño', 'Ejercicio', 'Minutos de ejercicio', 'Intensidad ejercicio', 'Notas'];
   const q = { 1: 'Mala', 2: 'Regular', 3: 'Buena' } as const;
   const rows = [...logs]
     .sort((a, b) => a.day.localeCompare(b.day))
     .map((l) => [
       l.day,
       l.digestion ? digestionLabel(l.digestion) : '',
-      l.water ?? '',
+      l.water ? Math.round(glassesToMl(l.water)) : '',
+      l.hydration ? hydrationLabel(l.hydration) : '',
       l.stress ?? '',
       l.sleepHours ?? '',
       l.sleepQuality ? q[l.sleepQuality] : '',

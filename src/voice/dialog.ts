@@ -8,7 +8,8 @@
 import { formatTime, HOUR } from '@/domain/dates';
 import { FEELINGS, bristolInfo, mealTypeLabel, preparationLabel, quantityLabel, suggestMealType, symptomLabel } from '@/domain/labels';
 import { deriveFlags, foodKey } from '@/domain/foods';
-import type { BristolType, DigestionRating, FeelingAfter, MealType, QuantityLevel } from '@/domain/types';
+import type { BristolType, DigestionRating, FeelingAfter, HydrationLevel, MealType, QuantityLevel } from '@/domain/types';
+import { HYDRATION_LEVELS, formatMl, glassesToMl, hydrationLabel } from '@/domain/hydration';
 import type { MealInput, StoolInput, SymptomInput } from '@/db/repo';
 import { bristolIn, intensityIn, isBeverage, normalize, parseTime, parseUtterance, TYPICAL_HOUR, type DraftMeal, type DraftStool, type DraftSymptom, type ParseResult } from './nlu';
 
@@ -31,7 +32,12 @@ export interface Session {
   meals: SMeal[];
   symptoms: SSymptom[];
   stools: SStool[];
+  /** Agua sumada en esta conversación, en vasos de 250 ml (con decimales). */
   water: number;
+  /** Estimado del agua del día (a sorbos). */
+  hydration?: HydrationLevel;
+  /** Mencionó agua sin cantidad: preguntar el estimado. */
+  waterAsk?: boolean;
   digestion?: DigestionRating;
   /** Preguntas ya hechas (para no repetir las opcionales). */
   asked: string[];
@@ -50,6 +56,7 @@ export type Answer =
   | { kind: 'feeling'; value: FeelingAfter }
   | { kind: 'intensity'; value: number }
   | { kind: 'bristol'; value: BristolType }
+  | { kind: 'hydration'; value: HydrationLevel }
   | { kind: 'save' }
   | { kind: 'cancel' };
 
@@ -58,7 +65,7 @@ export interface Chip {
   answer: Answer;
 }
 
-export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'confirm';
+export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'hydration' | 'confirm';
 
 export interface Question {
   id: string;
@@ -89,7 +96,7 @@ export function emptySession(): Session {
 }
 
 export function isEmpty(s: Session): boolean {
-  return !s.meals.length && !s.symptoms.length && !s.stools.length && !s.water && s.digestion === undefined;
+  return !s.meals.length && !s.symptoms.length && !s.stools.length && !s.water && s.hydration === undefined && !s.waterAsk && s.digestion === undefined;
 }
 
 const clone = (s: Session): Session => structuredClone(s);
@@ -179,7 +186,8 @@ export function summaryLines(s: Session, now: number): string[] {
     if (st.pain) line += ', con dolor';
     lines.push(line);
   }
-  if (s.water) lines.push(`${s.water} ${s.water === 1 ? 'vaso' : 'vasos'} de agua`);
+  if (s.water) lines.push(`≈ ${formatMl(glassesToMl(s.water))} de agua`);
+  if (s.hydration) lines.push(`Agua hoy (estimado): ${hydrationLabel(s.hydration).toLowerCase()}`);
   if (s.digestion) lines.push(`Digestión del día: ${['', 'muy mal', 'mal', 'regular', 'bien', 'muy bien'][s.digestion]}`);
   return lines;
 }
@@ -323,6 +331,16 @@ export function nextQuestion(s: Session, now: number): Question | undefined {
       };
     }
   }
+  // 10. Agua mencionada sin cantidad ("tomé agua a sorbos")
+  if (s.waterAsk && s.hydration === undefined && !s.water && !s.asked.includes('hydration')) {
+    return {
+      id: 'hydration',
+      kind: 'hydration',
+      target: '',
+      text: '¿Cuánta agua has tomado hoy en total, más o menos: poca, normal o bastante?',
+      chips: [...HYDRATION_LEVELS.map((h) => ({ label: h.label, answer: { kind: 'hydration', value: h.value } as Answer })), { label: 'Omitir', answer: { kind: 'skip' } }],
+    };
+  }
   if (isEmpty(s)) return undefined;
   return {
     id: 'confirm',
@@ -345,6 +363,13 @@ function feelingFromText(n: string): FeelingAfter | undefined {
   if (/\b(molesto|molesta|molestia|incomodo|incomoda|regular)\b/.test(n)) return 'molesto';
   if (/\b(satisfecho|satisfecha)\b/.test(n)) return 'satisfecho';
   if (/\b(bien|super|rico|normal)\b/.test(n)) return 'bien';
+  return undefined;
+}
+
+function hydrationFromText(n: string): HydrationLevel | undefined {
+  if (/\b(muy poca|poca|poquita|poco|poquito|casi nada|nada)\b/.test(n)) return 1;
+  if (/\b(bastante|mucha|mucho|harta|harto|full|un monton|demasiada)\b/.test(n)) return 3;
+  if (/\b(normal|regular|lo normal|como siempre|mas o menos|lo de siempre)\b/.test(n)) return 2;
   return undefined;
 }
 
@@ -407,6 +432,11 @@ export function interpret(q: Question, raw: string, p: ParseResult, now: number,
       if (p.number !== undefined && p.number >= 1 && p.number <= 7) return { kind: 'bristol', value: p.number as BristolType };
       const b = bristolIn(n);
       return b ? { kind: 'bristol', value: b } : undefined;
+    }
+    case 'hydration': {
+      if (p.intent === 'skip' || p.intent === 'no') return { kind: 'skip' };
+      const h = p.hydration ?? hydrationFromText(n);
+      return h ? { kind: 'hydration', value: h } : undefined;
     }
     case 'confirm':
       if (p.intent === 'confirm') return { kind: 'save' };
@@ -492,6 +522,11 @@ export function applyAnswer(s: Session, q: Question, a: Answer, now: number): bo
       st.bristol = a.value;
       return true;
     }
+    case 'hydration':
+      if (a.kind === 'hydration') s.hydration = a.value;
+      else if (a.kind !== 'skip') return false;
+      mark();
+      return true;
     case 'confirm':
       return a.kind === 'save' || a.kind === 'no';
   }
@@ -554,8 +589,14 @@ export function merge(s: Session, p: ParseResult, now: number, raw?: string): st
     notes.push(`Anoté una deposición${st.bristol ? ` tipo ${st.bristol} (${bristolInfo(st.bristol).description.split('.')[0].toLowerCase()})` : ''}.`);
   }
   if (p.water) {
-    s.water += p.water;
-    notes.push(`Sumé ${p.water} ${p.water === 1 ? 'vaso' : 'vasos'} de agua.`);
+    s.water = Math.round((s.water + p.water) * 100) / 100;
+    notes.push(`Sumé ≈ ${formatMl(glassesToMl(p.water))} de agua.`);
+  }
+  if (p.hydration) {
+    s.hydration = p.hydration;
+    notes.push(`Anoté que hoy tomaste ${hydrationLabel(p.hydration).toLowerCase()} agua.`.replace('normal agua', 'agua normal'));
+  } else if (p.waterVague && !p.water) {
+    s.waterAsk = true;
   }
   if (p.digestion) {
     s.digestion = p.digestion;
@@ -606,13 +647,14 @@ export function merge(s: Session, p: ParseResult, now: number, raw?: string): st
 
 export interface TurnContext {
   now: number;
+  bottleMl?: number;
   extraFoods?: { name: string; key: string }[];
 }
 
 /** Procesa lo que la persona dijo o escribió. */
 export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): Reply {
   const s = clone(prev);
-  const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods });
+  const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
 
   if (p.fast) {
@@ -627,7 +669,7 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
   let ack: string[] = [];
   if (q) {
     // Si la frase trae contenido nuevo (alimentos, síntomas…), se integra; si no, se usa como respuesta.
-    const hasContent = p.meals.length || p.symptoms.length || p.stools.length || p.removals.length || p.water || p.digestion;
+    const hasContent = p.meals.length || p.symptoms.length || p.stools.length || p.removals.length || p.water || p.digestion || (p.hydration && q.kind !== 'hydration') || p.waterVague;
     const a = !hasContent || q.kind === 'confirm' ? interpret(q, raw, p, ctx.now, s) : undefined;
     if (a?.kind === 'save') return finishSave(s, ctx.now);
     if (a && a.kind === 'no' && q.kind === 'confirm') {
@@ -688,6 +730,7 @@ export interface Records {
   symptoms: SymptomInput[];
   stools: StoolInput[];
   water: number;
+  hydration?: HydrationLevel;
   digestion?: DigestionRating;
 }
 
@@ -733,5 +776,5 @@ export function toRecords(s: Session, now: number): Records {
     blood: st.blood ?? 'no',
     notes: 'Registrado por voz',
   }));
-  return { meals, symptoms, stools, water: s.water, digestion: s.digestion };
+  return { meals, symptoms, stools, water: s.water, hydration: s.hydration, digestion: s.digestion };
 }

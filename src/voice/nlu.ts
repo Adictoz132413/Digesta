@@ -19,6 +19,7 @@ import type {
   BristolType,
   DigestionRating,
   FeelingAfter,
+  HydrationLevel,
   Level0to3,
   MealType,
   Preparation,
@@ -85,8 +86,12 @@ export interface ParseResult {
   meals: DraftMeal[];
   symptoms: DraftSymptom[];
   stools: DraftStool[];
-  /** Vasos de agua mencionados. */
+  /** Agua mencionada, en vasos de 250 ml (admite decimales: "media botella"). */
   water?: number;
+  /** Estimado del agua del día ("hoy tomé poca agua"). */
+  hydration?: HydrationLevel;
+  /** Mencionó agua sin cantidad ("tomé agua a sorbos"): el diálogo pregunta cuánta en total. */
+  waterVague?: boolean;
   digestion?: DigestionRating;
   /** Claves de alimentos que la persona pidió quitar ("quita el pan"). */
   removals: string[];
@@ -109,6 +114,8 @@ export interface ParseResult {
 
 export interface ParseContext {
   now: number;
+  /** Tamaño de la botella habitual en ml (para "me tomé una botella de agua"). */
+  bottleMl?: number;
   /** Alimentos de tu historial y propios (nombre visible). */
   extraFoods?: { name: string; key: string }[];
 }
@@ -687,6 +694,41 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
   return { items, unknownAllowed };
 }
 
+// ───────────────────────── Agua ─────────────────────────
+
+const AMOUNT = '(\\d+(?::\\d+)?|un|una|uno|medio|media|1 y medio|un cuarto de)';
+const WATER_QTY = new RegExp(`\\b${AMOUNT} (vasos?|vasitos?|tazas?|botellas?|botellitas?|botellones?|litros?) (?:grandes? )?de agua\\b`, 'g');
+const WATER_LEVELS: [RegExp, HydrationLevel][] = [
+  [/\b(muy poca|poca|poquita|poquito de|casi nada de|nada de|casi no tome|casi no he tomado|no he tomado|no tome) agua\b/, 1],
+  [/\b(bastante|mucha|harta|full|un monton de) agua\b/, 3],
+  [/\b(agua normal|lo normal de agua|normal de agua|agua como siempre|agua lo normal)\b/, 2],
+];
+const WATER_VAGUE = /\b(sorbos?|sorbitos?|traguitos?|traguito) de agua\b|\bagua a sorbos\b|\b(tome|me tome|bebi|he tomado|tomando|he estado tomando|estuve tomando) (un poco de |algo de )?agua\b/;
+const WHOLE_BOTTLE = /\b(me tome|tome|me bebi|bebi|termine|me acabe|acabe) (casi )?(toda |la )+(mi )?botella( de agua)?\b/;
+
+/** Interpreta cantidades de agua en ml, estimados del día o menciones vagas. */
+export function parseWater(s: string, bottleMl = 600): { ml?: number; level?: HydrationLevel; vague: boolean } {
+  let ml = 0;
+  for (const m of s.matchAll(WATER_QTY)) {
+    const q = m[1];
+    const n = q === 'un' || q === 'una' || q === 'uno' ? 1 : q === 'medio' || q === 'media' ? 0.5 : q === '1 y medio' ? 1.5 : q === 'un cuarto de' ? 0.25 : Number(q.replace(':', '.'));
+    const unit = m[2];
+    const per = /botellon/.test(unit) ? 5000 : /botellita/.test(unit) ? 300 : /botella/.test(unit) ? bottleMl : /litro/.test(unit) ? 1000 : 250;
+    ml += n * per;
+  }
+  if (!ml && WHOLE_BOTTLE.test(s)) ml = /\bcasi\b/.test(s) ? bottleMl * 0.75 : bottleMl;
+  let level: HydrationLevel | undefined;
+  for (const [re, l] of WATER_LEVELS) if (re.test(s)) level = level ?? l;
+  return { ml: ml ? Math.min(ml, 10_000) : undefined, level, vague: WATER_VAGUE.test(s) || /\bagua\b/.test(s) && /\bsorb/.test(s) };
+}
+
+/** Quita las frases de agua para que no se confundan con alimentos. */
+function stripWater(c: string): string {
+  let out = c.replace(WATER_QTY, ' ').replace(WHOLE_BOTTLE, ' ').replace(WATER_VAGUE, ' ');
+  for (const [re] of WATER_LEVELS) out = out.replace(re, ' ');
+  return out.replace(/\ba sorbos\b/g, ' ');
+}
+
 // ───────────────────────── Intenciones ─────────────────────────
 
 const CONFIRM_RE = /^(si|sii|sip|claro|claro que si|correcto|dale|listo|ok|okay|okey|exacto|eso es todo|es todo|asi es|perfecto|guardar|guardalo|guardala|guarda|guardelo|confirmo|de una|hagale|bueno|ya|eso|esta bien|todo bien|correcto guardalo|si guardalo|si senor|afirmativo|si eso es todo|listo guardalo|si por favor)( por favor| gracias)?$/;
@@ -760,12 +802,11 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   }
 
   // Agua
-  const water = whole.match(/\b(\d+|un|una|medio|media) (vasos?|botellas?|botellitas?|litros?) de agua\b/);
-  if (water) {
-    const n = water[1] === 'un' || water[1] === 'una' ? 1 : water[1] === 'medio' || water[1] === 'media' ? 0.5 : Number(water[1]);
-    const mult = /botell/.test(water[2]) ? 2 : /litro/.test(water[2]) ? 4 : 1;
-    res.water = Math.max(1, Math.round(n * mult));
-  } else if (/\b(tome|me tome|bebi) agua\b/.test(whole)) res.water = 1;
+  // Agua: cantidad (vasos, botellas, litros), estimado del día o mención sin cantidad
+  const wq = parseWater(whole, ctx.bottleMl ?? 600);
+  if (wq.ml) res.water = Math.round((wq.ml / 250) * 100) / 100;
+  if (wq.level) res.hydration = wq.level;
+  if (wq.vague && !wq.ml && !wq.level) res.waterVague = true;
 
   // Digestión del día
   const dig = whole.match(/\bdigestion\b.*?\b(excelente|muy bien|super bien|bien|regular|mas o menos|muy mal|mal|pesima|horrible|fatal)\b/);
@@ -780,7 +821,7 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   const now = ctx.now;
 
   for (const c0 of clauses) {
-    const c = c0.replace(/\b(\d+|un|una|medio|media) (vasos?|botellas?|botellitas?|litros?) de agua\b/g, ' ').replace(/\b(tome|me tome|bebi) agua\b/g, ' ');
+    const c = stripWater(c0);
     if (dig && /\bdigestion\b/.test(c)) continue;
 
     // Deposiciones (y detalles en cláusulas siguientes: "…, con un poquito de sangre")
@@ -886,16 +927,18 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
 
   // Frases sin alimentos: actualizar campos sueltos
   if (!res.meals.length && !res.symptoms.length && !res.stools.length) {
-    const mt = detectMealType(whole);
+    // Sin las frases de agua ("tomé poca agua" no es "porciones pequeñas")
+    const rest = stripWater(whole).replace(/\s+/g, ' ').trim();
+    const mt = detectMealType(rest);
     if (mt) res.mealTypeOnly = mt;
-    const t = parseTime(whole, now, mt ?? res.mealTypeOnly);
+    const t = parseTime(rest, now, mt ?? res.mealTypeOnly);
     if (t !== undefined && res.timeOnly === undefined) res.timeOnly = t;
-    const f = feelingIn(whole);
+    const f = feelingIn(rest);
     if (f) res.feelingOnly = f;
-    const toks = whole.split(' ');
-    if (toks.some((w) => SMALL.test(w)) || /\bun poco\b/.test(whole)) res.quantityOnly = 'poca';
+    const toks = rest.split(' ').filter(Boolean);
+    if (toks.some((w) => SMALL.test(w)) || /\bun poco\b/.test(rest)) res.quantityOnly = 'poca';
     else if (toks.some((w) => LARGE.test(w))) res.quantityOnly = 'abundante';
-    else if (/\b(normal|normales)\b/.test(whole)) res.quantityOnly = 'normal';
+    else if (/\b(normal|normales)\b/.test(rest)) res.quantityOnly = 'normal';
   }
 
   // "Empiezo el ayuno a las 8": la hora pertenece al ayuno, no es una corrección suelta
@@ -910,6 +953,8 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
     !res.symptoms.length &&
     !res.stools.length &&
     res.water === undefined &&
+    res.hydration === undefined &&
+    !res.waterVague &&
     res.digestion === undefined &&
     !res.removals.length &&
     res.mealTypeOnly === undefined &&
