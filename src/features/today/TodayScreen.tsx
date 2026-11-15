@@ -4,7 +4,7 @@
  * línea de tiempo y la pregunta de cierre "¿Cómo estuvo tu digestión hoy?".
  */
 import { useLiveQuery } from 'dexie-react-hooks';
-import { AlertTriangle, ChevronRight, Droplets, Moon, Plus, Utensils } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Droplets, Mic, Moon, Plus, Utensils } from 'lucide-react';
 import { Fragment, useEffect, useMemo } from 'react';
 import { getDb } from '@/db/db';
 import { isOngoing, loadDay, patchDailyLog } from '@/db/repo';
@@ -98,6 +98,19 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
       )}
 
       {/* Accesos inmediatos */}
+      <button
+        type="button"
+        onClick={() => navigate('/asistente')}
+        className="mb-2.5 flex w-full items-center gap-3 rounded-3xl bg-primary p-4 text-left text-on-primary shadow-card transition active:scale-[0.99]"
+      >
+        <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+          <Mic size={26} />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-base font-extrabold">Contar por voz</span>
+          <span className="block text-[13px] opacity-85">«Almorcé arroz con pollo y me cayó pesado»</span>
+        </span>
+      </button>
       <div className="grid grid-cols-3 gap-2.5">
         <QuickAction label="Agregar comida" emoji="🍽️" onClick={() => entry.openMeal()} className="bg-good-soft text-good" />
         <QuickAction label="Registrar deposición" icon={<BristolIcon type={4} className="h-7 w-14" />} onClick={() => entry.openStool()} className="bg-mid-soft text-mid" />

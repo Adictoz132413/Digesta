@@ -68,7 +68,19 @@ Cuando publiques una versión nueva, la app mostrará «Hay una nueva versión d
 - **Comida**: escribe o toca alimentos frecuentes → Guardar. La hora y el tipo de comida se sugieren solos. Cantidad, preparación, ingredientes, café/lácteos/picante/grasas/alcohol, suplementos, foto, notas y sensación son opcionales. Puedes **repetir** favoritas o comidas recientes y **duplicar** cualquier comida.
 - **Deposición**: toca el tipo de Bristol → Guardar. Color, cantidad, urgencia, esfuerzo, dolor, evacuación incompleta, moco, sangre y notas son opcionales.
 - **Síntoma**: toca uno o varios, ajusta la intensidad 0–10 → Guardar. Ubicación en el mapa abdominal, duración o fin y observaciones son opcionales.
-- Atajos: mantén presionado el icono de la app en Android para ir directo a *Comida*, *Deposición* o *Síntoma*.
+- Atajos: mantén presionado el icono de la app en Android para ir directo a *Voz*, *Comida*, *Deposición* o *Síntoma*.
+
+### Asistente de voz
+
+Toca **Contar por voz** (en Hoy) o el micrófono flotante y habla con naturalidad:
+
+> «Almorcé a la una arroz, fríjoles bastantes y carne asada, me cayó pesado»
+> «Hace una hora me dio agrieras fuerte» · «Fui al baño y salió suelta, con un poquito de sangre en el papel»
+> «Tomé 3 vasos de agua» · «Quita el pan» · «Fue a las 8» · «Guárdalo»
+
+El asistente organiza la ficha (tipo de comida, hora, alimentos, cantidades, preparación, ingredientes, sensación, síntomas con intensidad, ubicación y duración, deposición con Bristol, sangre, color, urgencia y dolor) y **sólo pregunta lo que falta**: la hora si no coincide, el tamaño de las porciones, cómo te sentiste, la intensidad de un síntoma, el tipo de Bristol o si un alimento que no conoce es realmente un alimento. Puedes responder hablando o tocando las opciones, corregir sobre la marcha y guardar cuando quieras. Lee sus respuestas en voz alta y, en modo *conversación continua*, vuelve a escuchar solo.
+
+**Privacidad de la voz.** La interpretación (`src/voice/nlu.ts` y `src/voice/dialog.ts`) se hace con reglas y diccionarios en el teléfono: ningún texto se envía a un servicio de IA. La conversión de **voz a texto** la hace Chrome: si el teléfono permite reconocimiento en el dispositivo, se usa; si no, Chrome puede enviar el audio a Google, y la app lo explica y pide permiso antes del primer uso. Alternativa 100 % local: el micrófono del teclado (Gboard) con dictado sin conexión, escribiendo en el campo del asistente.
 
 ## 4. Cómo funciona el análisis de patrones
 
@@ -126,7 +138,8 @@ Digesta/
 │  ├─ db/           Dexie (IndexedDB), validación zod, repositorio, respaldo JSON, CSV, datos demo
 │  ├─ analysis/     motor de asociaciones, estadísticas y hooks reactivos
 │  ├─ components/   UI accesible (Radix Dialog), ilustraciones Bristol y mapa abdominal
-│  ├─ features/     today, diary, entries (formularios), tolerance, patterns, calendar, reports, settings
+│  ├─ features/     today, diary, entries (formularios), assistant (voz), tolerance, patterns, calendar, reports, settings
+│  ├─ voice/        intérprete de lenguaje local (nlu), motor de diálogo y voz (reconocimiento/lectura)
 │  └─ lib/          enrutador por hash, tema, fotos, descargas, recordatorios
 └─ tests/           Vitest + fake-indexeddb
 ```

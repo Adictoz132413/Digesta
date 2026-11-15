@@ -20,6 +20,7 @@ import { buildIcs, notificationPermission, REMINDER_KINDS, reminderInfo, request
 import { navigate } from '@/lib/router';
 import { Button, Card, IconButton, SectionTitle, Segmented, Stepper, Switch, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
 import { CsvExport } from '@/features/reports/CsvExport';
+import { VoiceSection } from './VoiceSection';
 
 const VERSION = '1.0.0';
 
@@ -53,6 +54,8 @@ export function SettingsScreen() {
           ]}
         />
       </Card>
+
+      <VoiceSection />
 
       <SectionTitle>Hidratación y análisis</SectionTitle>
       <Card>
@@ -502,6 +505,7 @@ function PrivacySection() {
               <li>Los datos no tienen un cifrado propio de la app; dependen del cifrado del dispositivo que trae Android.</li>
               <li>Si borras los datos del navegador, desinstalas la app o pierdes el teléfono, los registros se pierden si no tienes copia de seguridad.</li>
               <li>Las copias JSON, los CSV y los PDF que exportes no están cifrados. Guárdalos en un lugar seguro y compártelos sólo con quien elijas.</li>
+              <li>Si usas el micrófono del asistente y tu teléfono no reconoce la voz sin conexión, Chrome puede enviar el audio a Google para transcribirlo. DIGESTA no lo recibe; la app te pide permiso antes y puedes usar el dictado del teclado.</li>
             </ul>
           </div>
         </div>

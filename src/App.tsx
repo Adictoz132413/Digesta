@@ -2,7 +2,7 @@
  * Estructura principal: encabezado, contenido según la ruta y navegación inferior.
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { BarChart3, CalendarDays, Home, NotebookPen, Settings as SettingsIcon, Sprout } from 'lucide-react';
+import { BarChart3, CalendarDays, Home, Mic, NotebookPen, Settings as SettingsIcon, Sprout } from 'lucide-react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { getDb, getMode, writeMode } from '@/db/db';
 import { cleanOrphanPhotos, updateSettings } from '@/db/repo';
@@ -21,6 +21,7 @@ import { PatternsScreen } from '@/features/patterns/PatternsScreen';
 import { CalendarScreen } from '@/features/calendar/CalendarScreen';
 import { ReportScreen } from '@/features/reports/ReportScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
+import { AssistantScreen } from '@/features/assistant/AssistantScreen';
 import { Onboarding } from '@/features/settings/Onboarding';
 import { ReminderBanner } from '@/features/settings/ReminderBanner';
 
@@ -95,6 +96,9 @@ function Shell() {
     case 'informe':
       screen = <ReportScreen days={Number(route.query.get('dias')) || 30} />;
       break;
+    case 'asistente':
+      screen = <AssistantScreen />;
+      break;
     case 'ajustes':
       screen = <SettingsScreen />;
       break;
@@ -123,12 +127,27 @@ function Shell() {
           </button>
         </header>
       )}
-      <main className={cx('flex-1 px-4', isReport ? 'pb-10' : 'pb-28')}>{ready ? screen : <Loading />}</main>
+      <main className={cx('flex-1 px-4', isReport ? 'pb-10' : root === 'asistente' ? 'pb-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'pb-36')}>{ready ? screen : <Loading />}</main>
       {!isReport && <BottomNav active={root} />}
+      {ready && !isReport && root !== 'asistente' && root !== 'ajustes' && root !== 'hoy' && <VoiceFab />}
       {ready && !settings.disclaimerAccepted && <Onboarding onAccept={() => updateSettings({ disclaimerAccepted: true })} />}
       <UpdatePrompt />
       <ReminderBanner />
     </div>
+  );
+}
+
+/** Botón flotante para hablar con el asistente desde cualquier pantalla. */
+function VoiceFab() {
+  return (
+    <a
+      href="#/asistente"
+      aria-label="Contar por voz al asistente"
+      title="Contar por voz"
+      className="no-print fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] right-4 z-30 flex size-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-2xl transition active:scale-95"
+    >
+      <Mic size={26} />
+    </a>
   );
 }
 

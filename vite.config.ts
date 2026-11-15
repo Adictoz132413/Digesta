@@ -57,6 +57,7 @@ export default defineConfig({
           { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
+          { name: 'Contar por voz', short_name: 'Voz', url: `${base}#/asistente` },
           { name: 'Agregar comida', short_name: 'Comida', url: `${base}#/hoy?nuevo=comida` },
           { name: 'Registrar deposición', short_name: 'Deposición', url: `${base}#/hoy?nuevo=deposicion` },
           { name: 'Registrar síntoma', short_name: 'Síntoma', url: `${base}#/hoy?nuevo=sintoma` },

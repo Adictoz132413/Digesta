@@ -1,0 +1,452 @@
+/**
+ * ASISTENTE DE VOZ
+ * Conversación para registrar comidas, síntomas y deposiciones hablando.
+ * El asistente organiza la ficha y pregunta sólo lo necesario para completarla.
+ */
+import * as Dialog from '@radix-ui/react-dialog';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Keyboard, Mic, MicOff, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { getDb } from '@/db/db';
+import { foodHistory, getDailyLog, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
+import { dayKey } from '@/domain/dates';
+import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
+import type { Meal } from '@/domain/types';
+import { emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
+import {
+  createRecognizer,
+  installOnDevice,
+  onDeviceStatus,
+  readVoicePrefs,
+  recognitionSupported,
+  speak,
+  stopSpeaking,
+  ttsSupported,
+  writeVoicePrefs,
+  type OnDeviceStatus,
+  type Recognizer,
+  type VoicePrefs,
+} from '@/voice/speech';
+import { useEntry } from '@/features/entries/EntryProvider';
+import { Button, IconButton, cx, errorMessage, inputClass, useToast } from '@/components/ui';
+import { navigate } from '@/lib/router';
+
+interface Msg {
+  id: number;
+  role: 'user' | 'bot';
+  text: string;
+  /** Opciones rápidas (sólo las del último mensaje están activas). */
+  question?: Question;
+  /** Comidas guardadas en este turno, para editarlas. */
+  saved?: Meal[];
+}
+
+const EXAMPLES = [
+  'Almorcé arroz, fríjoles bastantes y carne asada',
+  'Hace una hora me dio agrieras fuerte',
+  'Fui al baño y salió normal',
+  'Desayuné 2 arepas con queso y un tinto',
+];
+
+const INTRO =
+  'Hola. Cuéntame qué comiste o bebiste, cómo te sientes o si fuiste al baño, con tus palabras. Yo organizo la ficha y te pregunto lo que falte.';
+
+export function AssistantScreen() {
+  const toast = useToast();
+  const entry = useEntry();
+  const [session, setSession] = useState<Session>(emptySession);
+  const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, role: 'bot', text: INTRO }]);
+  const [input, setInput] = useState('');
+  const [listening, setListening] = useState(false);
+  const [partial, setPartial] = useState('');
+  const [prefs, setPrefs] = useState<VoicePrefs>(readVoicePrefs);
+  const [device, setDevice] = useState<OnDeviceStatus>('unsupported');
+  const deviceChecked = useRef(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const recRef = useRef<Recognizer>(undefined);
+  const lastWasVoice = useRef(false);
+  const seq = useRef(1);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
+  const history = useLiveQuery(() => foodHistory(), [], []);
+  const custom = useLiveQuery(() => getDb().customFoods.toArray(), [], []);
+  const extraFoods = [...history.map((h) => ({ name: h.name, key: h.key })), ...custom.map((c) => ({ name: c.name, key: c.key }))];
+  const extraRef = useRef(extraFoods);
+  extraRef.current = extraFoods;
+
+  const supported = recognitionSupported();
+
+  useEffect(() => {
+    return () => {
+      recRef.current?.abort();
+      stopSpeaking();
+    };
+  }, []);
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
+  }, [msgs, partial]);
+
+  const updatePrefs = (p: Partial<VoicePrefs>) => {
+    const next = { ...prefs, ...p };
+    setPrefs(next);
+    writeVoicePrefs(next);
+    if (p.tts === false) stopSpeaking();
+  };
+
+  const push = (m: Omit<Msg, 'id'>) => setMsgs((x) => [...x, { ...m, id: seq.current++ }]);
+
+  // ───────── Escuchar ─────────
+
+  const startListening = useCallback(async () => {
+    // La disponibilidad en el dispositivo se consulta sólo al usar el micrófono
+    let dev = device;
+    if (!deviceChecked.current) {
+      deviceChecked.current = true;
+      dev = await onDeviceStatus();
+      setDevice(dev);
+    }
+    const onDevice = dev === 'available';
+    if (!onDevice && !readVoicePrefs().cloudConsent) {
+      setConsentOpen(true);
+      return;
+    }
+    stopSpeaking();
+    recRef.current?.abort();
+    const rec = createRecognizer({
+      onDevice,
+      onStart: () => setListening(true),
+      onPartial: setPartial,
+      onFinal: (t) => {
+        lastWasVoice.current = true;
+        submitRef.current(t);
+      },
+      onError: (m, code) => {
+        if (code !== 'no-speech') toast(m, { tone: 'error' });
+        if (code === 'not-allowed' || code === 'network' || code === 'service-not-allowed') lastWasVoice.current = false;
+      },
+      onEnd: () => {
+        setListening(false);
+        setPartial('');
+      },
+    });
+    if (!rec) return;
+    recRef.current = rec;
+    rec.start();
+  }, [device, toast]);
+
+  const stopListening = () => recRef.current?.stop();
+
+  /** Responde en pantalla (y en voz alta) y, si corresponde, vuelve a escuchar. */
+  const respond = useCallback(
+    (text: string, question?: Question, extra?: Partial<Msg>) => {
+      push({ role: 'bot', text, question, ...extra });
+      const p = readVoicePrefs();
+      const relisten = () => {
+        if (p.autoListen && lastWasVoice.current && question && supported) setTimeout(() => void startListening(), 250);
+      };
+      if (p.tts && ttsSupported()) speak(text, relisten);
+      else relisten();
+    },
+    [startListening, supported],
+  );
+
+  // ───────── Guardar ─────────
+
+  const save = useCallback(
+    async (s: Session) => {
+      setSaving(true);
+      const now = Date.now();
+      try {
+        const rec = toRecords(s, now);
+        const alerts: MedicalAlert[] = [];
+        const savedMeals: Meal[] = [];
+        for (const m of rec.meals) savedMeals.push(await saveMeal(m));
+        for (const x of rec.symptoms) alerts.push(...symptomAlerts(await saveSymptom(x)));
+        for (const x of rec.stools) alerts.push(...stoolAlerts(await saveStool(x)));
+        const day = dayKey(now);
+        if (rec.water) {
+          const log = await getDailyLog(day);
+          await patchDailyLog(day, { water: Math.min(40, (log?.water ?? 0) + rec.water) });
+        }
+        if (rec.digestion) await patchDailyLog(day, { digestion: rec.digestion });
+        const parts = [
+          rec.meals.length && `${rec.meals.length} ${rec.meals.length === 1 ? 'comida' : 'comidas'}`,
+          rec.symptoms.length && `${rec.symptoms.length} ${rec.symptoms.length === 1 ? 'síntoma' : 'síntomas'}`,
+          rec.stools.length && `${rec.stools.length} ${rec.stools.length === 1 ? 'deposición' : 'deposiciones'}`,
+          rec.water && `${rec.water} ${rec.water === 1 ? 'vaso' : 'vasos'} de agua`,
+          rec.digestion && 'tu valoración del día',
+        ].filter(Boolean);
+        setSession(emptySession());
+        lastWasVoice.current = false;
+        respond(`Listo, guardé ${parts.join(', ')}. ¿Algo más?`, undefined, { saved: savedMeals });
+        toast('Guardado en tu diario');
+        if (alerts.length) entry.showAlerts(alerts);
+      } catch (e) {
+        respond(`No pude guardar: ${errorMessage(e)}`);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [entry, respond, toast],
+  );
+
+  // ───────── Turnos ─────────
+
+  const submit = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      push({ role: 'user', text: t });
+      const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current });
+      setSession(r.session);
+      if (r.save) {
+        void save(r.session);
+        return;
+      }
+      respond(r.text, r.question);
+    },
+    [respond, save],
+  );
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  const onChip = (c: Chip) => {
+    lastWasVoice.current = false;
+    stopSpeaking();
+    push({ role: 'user', text: c.label });
+    const r = handleChip(sessionRef.current, c, Date.now());
+    setSession(r.session);
+    if (r.save) {
+      void save(r.session);
+      return;
+    }
+    respond(r.text, r.question);
+  };
+
+  const sendTyped = () => {
+    lastWasVoice.current = false;
+    submit(input);
+    setInput('');
+  };
+
+  const lastBot = [...msgs].reverse().find((m) => m.role === 'bot');
+  const draft = !isEmpty(session) ? summaryLines(session, Date.now()) : [];
+
+  return (
+    <div className="flex h-[calc(100dvh-8.75rem-env(safe-area-inset-bottom))] flex-col pt-1">
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold tracking-tight">Asistente de voz</h1>
+          <p className="flex items-center gap-1 text-xs text-muted">
+            <ShieldCheck size={13} className="text-good" />
+            {device === 'available' ? 'Voz reconocida en tu teléfono' : 'La ficha se organiza en tu teléfono'}
+          </p>
+        </div>
+        <div className="flex shrink-0">
+          {ttsSupported() && (
+            <IconButton label={prefs.tts ? 'Silenciar respuestas habladas' : 'Leer respuestas en voz alta'} onClick={() => updatePrefs({ tts: !prefs.tts })}>
+              {prefs.tts ? <Volume2 size={21} /> : <VolumeX size={21} />}
+            </IconButton>
+          )}
+        </div>
+      </div>
+
+      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-1 pb-3" aria-live="polite">
+        {msgs.map((m) => (
+          <div key={m.id} className={cx('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+            <div className={cx('max-w-[88%] rounded-3xl px-4 py-3 text-[15px] leading-relaxed', m.role === 'user' ? 'rounded-br-lg bg-primary text-on-primary' : 'rounded-bl-lg border border-border bg-surface')}>
+              {m.role === 'bot' && m.id === 0 && <Sparkles size={16} className="mb-1 text-primary" aria-hidden />}
+              <p className="whitespace-pre-line">{m.text}</p>
+              {m.question && m === lastBot && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {m.question.chips.map((c) => (
+                    <button
+                      key={c.label}
+                      type="button"
+                      onClick={() => onChip(c)}
+                      disabled={saving}
+                      className={cx(
+                        'min-h-10 rounded-full border px-3.5 text-sm font-semibold transition active:scale-95',
+                        c.answer.kind === 'save' ? 'border-transparent bg-primary text-on-primary' : c.answer.kind === 'cancel' ? 'border-border text-bad' : 'border-border bg-surface-2',
+                      )}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {m.saved && m.saved.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {m.saved.map((meal) => (
+                    <button key={meal.id} type="button" onClick={() => entry.openMeal({ meal })} className="min-h-9 rounded-full bg-surface-2 px-3 text-sm font-semibold">
+                      Revisar {meal.items[0]?.name.toLowerCase()}
+                      {meal.items.length > 1 ? '…' : ''}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => navigate('/hoy')} className="min-h-9 rounded-full bg-surface-2 px-3 text-sm font-semibold">
+                    Ver Hoy
+                  </button>
+                </div>
+              )}
+              {m.id === 0 && msgs.length === 1 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-muted">Prueba con algo como:</p>
+                  {EXAMPLES.map((e) => (
+                    <button key={e} type="button" onClick={() => submit(e)} className="rounded-2xl bg-surface-2 px-3 py-2 text-left text-sm">
+                      «{e}»
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {(listening || partial) && (
+          <div className="flex justify-end">
+            <div className="max-w-[88%] rounded-3xl rounded-br-lg border-2 border-dashed border-primary px-4 py-3 text-[15px] text-muted">{partial || 'Te escucho…'}</div>
+          </div>
+        )}
+      </div>
+
+      {draft.length > 0 && (
+        <div className="mb-2 rounded-3xl border border-border bg-surface-2 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted">Ficha en borrador</p>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs font-semibold text-muted"
+              onClick={() => {
+                setSession(emptySession());
+                push({ role: 'bot', text: 'Descarté el borrador.' });
+              }}
+            >
+              <X size={14} /> Descartar
+            </button>
+          </div>
+          <ul className="mt-1 space-y-0.5 text-sm">
+            {draft.map((l) => (
+              <li key={l}>• {l}</li>
+            ))}
+          </ul>
+          <Button size="sm" className="mt-2" block disabled={saving} onClick={() => onChip({ label: 'Guardar', answer: { kind: 'save' } })}>
+            {saving ? 'Guardando…' : 'Guardar ahora'}
+          </Button>
+        </div>
+      )}
+
+      <div className="flex items-end gap-2 pb-1">
+        <form
+          className="relative min-w-0 flex-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendTyped();
+          }}
+        >
+          <input
+            ref={inputRef}
+            className={cx(inputClass, 'min-h-14 pr-12')}
+            placeholder={supported ? 'Escribe o toca el micrófono…' : 'Escribe o usa el micrófono del teclado…'}
+            aria-label="Mensaje para el asistente"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            enterKeyHint="send"
+            autoComplete="off"
+          />
+          <button type="submit" aria-label="Enviar" disabled={!input.trim()} className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-primary disabled:opacity-30">
+            <Send size={20} />
+          </button>
+        </form>
+        {supported ? (
+          <button
+            type="button"
+            onClick={() => (listening ? stopListening() : void startListening())}
+            aria-label={listening ? 'Dejar de escuchar' : 'Hablar'}
+            aria-pressed={listening}
+            className={cx('relative flex size-16 shrink-0 items-center justify-center rounded-full shadow-card transition active:scale-95', listening ? 'bg-bad text-white' : 'bg-primary text-on-primary')}
+          >
+            {listening && <span className="absolute inset-0 animate-ping rounded-full bg-bad/40" aria-hidden />}
+            {listening ? <MicOff size={28} /> : <Mic size={28} />}
+          </button>
+        ) : (
+          <button type="button" onClick={() => inputRef.current?.focus()} aria-label="Usar el teclado" className="flex size-16 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted">
+            <Keyboard size={26} />
+          </button>
+        )}
+      </div>
+      {supported && (
+        <label className="flex items-center justify-center gap-2 pb-1 text-xs text-muted">
+          <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={prefs.autoListen} onChange={(e) => updatePrefs({ autoListen: e.target.checked })} />
+          Conversación continua: escuchar de nuevo después de cada pregunta
+        </label>
+      )}
+
+      <ConsentDialog
+        open={consentOpen}
+        device={device}
+        onClose={() => setConsentOpen(false)}
+        onAccept={() => {
+          updatePrefs({ cloudConsent: true });
+          setConsentOpen(false);
+          setTimeout(() => void startListening(), 100);
+        }}
+        onKeyboard={() => {
+          setConsentOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }}
+        onInstall={async () => {
+          const ok = await installOnDevice();
+          const st = await onDeviceStatus();
+          setDevice(st);
+          toast(ok || st === 'available' || st === 'downloading' ? 'Descargando el español para reconocimiento sin conexión…' : 'Este teléfono no permite reconocimiento sin conexión desde el navegador', { tone: ok ? 'ok' : 'info' });
+          setConsentOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+function ConsentDialog({ open, device, onClose, onAccept, onKeyboard, onInstall }: { open: boolean; device: OnDeviceStatus; onClose: () => void; onAccept: () => void; onKeyboard: () => void; onInstall: () => void }) {
+  return (
+    <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="animate-fade fixed inset-0 z-[60] bg-black/45" />
+        <Dialog.Content className="animate-pop fixed left-1/2 top-1/2 z-[61] max-h-[88dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl border border-border bg-surface p-5 shadow-2xl">
+          <Dialog.Title className="text-lg font-extrabold">Antes de usar el micrófono</Dialog.Title>
+          <Dialog.Description asChild>
+            <div className="mt-2 space-y-2 text-sm leading-relaxed text-muted">
+              <p>
+                DIGESTA <strong className="text-text">entiende y organiza tu ficha dentro del teléfono</strong>, sin enviar nada.
+              </p>
+              <p>
+                Pero convertir tu <strong className="text-text">voz en texto</strong> lo hace Chrome. En este teléfono, Chrome puede enviar el audio a los servidores de Google para transcribirlo (como al dictar en el buscador). DIGESTA no recibe ni guarda el audio.
+              </p>
+              <p>Alternativas 100 % locales:</p>
+              <ul className="list-disc pl-5">
+                <li>Usar el micrófono del teclado (Gboard) con el dictado sin conexión activado.</li>
+                {(device === 'downloadable' || device === 'downloading') && <li>Descargar el español para que Chrome reconozca la voz en el teléfono.</li>}
+              </ul>
+            </div>
+          </Dialog.Description>
+          <div className="mt-5 flex flex-col gap-2">
+            {(device === 'downloadable' || device === 'downloading') && (
+              <Button variant="soft" block onClick={onInstall}>
+                Descargar español sin conexión
+              </Button>
+            )}
+            <Button block onClick={onAccept}>
+              <Mic size={18} /> Usar el dictado de Chrome
+            </Button>
+            <Button variant="secondary" block onClick={onKeyboard}>
+              <Keyboard size={18} /> Usar el teclado
+            </Button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}

@@ -32,9 +32,9 @@ export function prettyName(name: string): string {
 
 export const FOOD_CATALOG: CatalogFood[] = [
   // Bebidas
-  { name: 'Café', tags: ['cafeina'], aliases: ['tinto', 'cafe negro'] },
+  { name: 'Café', tags: ['cafeina'], aliases: ['cafe negro', 'cafecito'] },
   { name: 'Café con leche', tags: ['cafeina', 'lacteo'], ingredients: ['Café', 'Leche'] },
-  { name: 'Tinto', tags: ['cafeina'] },
+  { name: 'Tinto', tags: ['cafeina'], aliases: ['tintico'] },
   { name: 'Chocolate caliente', tags: ['lacteo', 'azucar', 'cafeina'], ingredients: ['Chocolate', 'Leche'] },
   { name: 'Aguapanela', tags: ['azucar'], ingredients: ['Panela'] },
   { name: 'Té', tags: ['cafeina'] },
@@ -44,7 +44,7 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Jugo de mora', tags: ['fruta', 'azucar'] },
   { name: 'Jugo de maracuyá', tags: ['fruta', 'azucar'] },
   { name: 'Limonada', tags: ['fruta', 'azucar'] },
-  { name: 'Gaseosa', tags: ['gaseosa', 'azucar'] },
+  { name: 'Gaseosa', tags: ['gaseosa', 'azucar'], aliases: ['coca cola', 'cocacola', 'pepsi', 'postobon', 'colombiana'] },
   { name: 'Gaseosa cero', tags: ['gaseosa', 'edulcorante'] },
   { name: 'Agua', tags: [] },
   { name: 'Agua con gas', tags: ['gaseosa'] },
@@ -69,10 +69,10 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Crema de leche', tags: ['lacteo', 'grasa'] },
   { name: 'Helado', tags: ['lacteo', 'azucar', 'grasa'] },
   // Desayunos y harinas
-  { name: 'Arepa', tags: ['cereal'], aliases: ['arepa blanca'] },
+  { name: 'Arepa', tags: ['cereal'], aliases: ['arepa blanca', 'arepita'] },
   { name: 'Arepa con queso', tags: ['cereal', 'lacteo'], ingredients: ['Arepa', 'Queso campesino'] },
   { name: 'Arepa de huevo', tags: ['cereal', 'frito', 'grasa', 'proteina'], ingredients: ['Arepa', 'Huevo'] },
-  { name: 'Pan', tags: ['gluten', 'cereal'] },
+  { name: 'Pan', tags: ['gluten', 'cereal'], aliases: ['pancito'] },
   { name: 'Pan integral', tags: ['gluten', 'cereal', 'fibra_alta'] },
   { name: 'Pan de bono', tags: ['lacteo', 'cereal'] },
   { name: 'Almojábana', tags: ['lacteo', 'cereal'] },
@@ -81,8 +81,8 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Empanada', tags: ['frito', 'grasa', 'cereal'] },
   { name: 'Changua', tags: ['lacteo', 'proteina'], ingredients: ['Leche', 'Huevo', 'Pan'] },
   { name: 'Calentado', tags: ['leguminosa', 'grasa'], ingredients: ['Arroz', 'Fríjoles', 'Huevo'] },
-  { name: 'Huevo', tags: ['proteina'], aliases: ['huevos', 'huevo frito', 'huevos pericos'] },
-  { name: 'Huevos pericos', tags: ['proteina'], ingredients: ['Huevo', 'Tomate', 'Cebolla'] },
+  { name: 'Huevo', tags: ['proteina'], aliases: ['huevos'] },
+  { name: 'Huevos pericos', tags: ['proteina'], ingredients: ['Huevo', 'Tomate', 'Cebolla'], aliases: ['huevo perico', 'perico', 'huevos revueltos'] },
   { name: 'Avena en hojuelas', tags: ['cereal', 'fibra_alta'] },
   { name: 'Granola', tags: ['cereal', 'azucar', 'fibra_alta'] },
   { name: 'Cereal de caja', tags: ['cereal', 'azucar', 'procesado'] },
@@ -110,7 +110,7 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Mazorca', tags: ['cereal'] },
   // Proteínas
   { name: 'Pollo', tags: ['proteina'] },
-  { name: 'Carne de res', tags: ['proteina'] },
+  { name: 'Carne de res', tags: ['proteina'], aliases: ['carne', 'res'] },
   { name: 'Carne molida', tags: ['proteina', 'grasa'] },
   { name: 'Cerdo', tags: ['proteina', 'grasa'] },
   { name: 'Chicharrón', tags: ['proteina', 'grasa', 'frito'] },
@@ -170,6 +170,18 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Salchipapa', tags: ['frito', 'grasa', 'procesado'] },
   { name: 'Comida china', tags: ['grasa', 'frito'] },
   { name: 'Barra de proteína', tags: ['proteina', 'procesado', 'edulcorante'] },
+  // Genéricos (útiles al dictar por voz)
+  { name: 'Queso', tags: ['lacteo', 'proteina'] },
+  { name: 'Jugo', tags: ['fruta', 'azucar'], aliases: ['juguito', 'jugo natural'] },
+  { name: 'Sopa', tags: [] },
+  { name: 'Sándwich', tags: ['gluten', 'cereal'], aliases: ['sanduche', 'sandwich', 'emparedado'] },
+  { name: 'Torta', tags: ['gluten', 'azucar', 'lacteo'], aliases: ['ponque', 'pastel'] },
+  { name: 'Carne asada', tags: ['proteina'], aliases: ['carne a la plancha'] },
+  { name: 'Arepa de choclo', tags: ['cereal', 'lacteo', 'azucar'] },
+  { name: 'Pandeyuca', tags: ['lacteo', 'cereal'], aliases: ['pan de yuca'] },
+  { name: 'Salchichón', tags: ['proteina', 'grasa', 'procesado'] },
+  { name: 'Frutas', tags: ['fruta'], aliases: ['fruta', 'ensalada de frutas'] },
+  { name: 'Chocolate', tags: ['azucar', 'cafeina'] },
 ];
 
 const CATALOG_BY_KEY = new Map<string, CatalogFood>();
