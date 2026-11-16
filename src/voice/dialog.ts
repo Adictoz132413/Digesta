@@ -560,6 +560,11 @@ export function merge(s: Session, p: ParseResult, now: number, raw?: string): st
     s.meals = s.meals.filter((m) => m.items.length || m.supplements.length);
     notes.push(removed ? `Quité ${k}.` : `No encontré «${k}» en lo que llevamos.`);
   }
+  if (p.replaceLast && p.meals.length) {
+    const target = s.meals[s.meals.length - 1];
+    const gone = target?.items.pop();
+    if (gone) notes.push(`Cambié ${gone.name.toLowerCase()}.`);
+  }
   for (const dm of p.meals) {
     const last = s.meals[s.meals.length - 1];
     if (last && !dm.mealTypeExplicit && !dm.timeExplicit) {

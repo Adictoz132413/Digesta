@@ -108,6 +108,8 @@ export interface ParseResult {
   number?: number;
   /** Inicio o fin de un ayuno intermitente ("empiezo el ayuno", "rompí el ayuno"). */
   fast?: { kind: 'start' | 'end'; at: number };
+  /** Empezó con "perdón"/"mejor dicho": lo que sigue reemplaza el último alimento del borrador. */
+  replaceLast?: boolean;
   /** true si no se reconoció nada útil. */
   empty: boolean;
 }
@@ -237,7 +239,8 @@ const STOP = new Set(
     'mama papa novia novio esposa esposo amigos amigo amiga familia trabajo oficina restaurante calle gimnasio gym entreno entrenar ' +
     'favor gracias listo ok vale dale bueno super tan pues entonces osea igual tal vez quizas creo parece senti siento cayo quede ' +
     'acompanado acompanada acompanamiento plus adicional extra lado parte ' +
-    'ayuno ayunar ayunando rompi rompo termine termino empiezo empece inicio inicie arranco arranque comienzo comence'
+    'ayuno ayunar ayunando rompi rompo termine termino empiezo empece inicio inicie arranco arranque comienzo comence ' +
+    'perdon perdona perdoname digo corrijo dicho sea eh ehh mmm ah este esto pues bueno'
   ).split(' '),
 );
 
@@ -578,43 +581,58 @@ function undiminish(tokens: string[], lex: Map<string, LexEntry>): string[] {
   }
   return tokens.map((t) => {
     const base = baseCandidates(t).find((c) => fw!.has(c) && !AMBIGUOUS_FOODS[c]);
-    return base ?? t;
+    if (base) return base;
+    // El dictado a veces pega la preposición: "amozzarella" → "a mozzarella"
+    if (!lex.has(t) && !fw!.has(t) && /^(a|y|de)[a-z]{3,}/.test(t)) {
+      const rest = t.replace(/^(a|y|de)/, '');
+      if (fw!.has(rest) || lex.has(rest)) return rest;
+    }
+    return t;
   });
 }
 
 function findFoods(rawTokens: string[], lex: Map<string, LexEntry>): FoodSpan[] {
   const tokens = undiminish(rawTokens, lex);
-  const spans: FoodSpan[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    let found: FoodSpan | null = null;
-    for (let L = Math.min(5, tokens.length - i); L >= 1; L--) {
+  const n = tokens.length;
+  // Candidatos: todas las coincidencias (1 a 5 palabras) que empiezan en cada posición
+  const cands: FoodSpan[][] = tokens.map(() => []);
+  for (let i = 0; i < n; i++) {
+    for (let L = Math.min(5, n - i); L >= 1; L--) {
       const phrase = tokens.slice(i, i + L).join(' ');
-      const e = lex.get(phrase);
+      let e = lex.get(phrase);
+      if (!e && L === 1) {
+        for (const c of baseCandidates(tokens[i])) {
+          const x = lex.get(c);
+          if (x && !AMBIGUOUS_FOODS[c]) {
+            e = x;
+            break;
+          }
+        }
+      }
       if (!e) continue;
       if (L === 1 && AMBIGUOUS_FOODS[phrase]) {
         const prev = tokens.slice(Math.max(0, i - 2), i).join(' ');
         if (!AMBIGUOUS_FOODS[phrase].test(prev)) continue;
       }
-      found = { start: i, end: i + L, entry: e };
-      break;
+      cands[i].push({ start: i, end: i + L, entry: e });
     }
-    if (!found) {
-      // Diminutivos: "huevitos", "quesito", "arepita con quesito"
-      for (const c of baseCandidates(tokens[i])) {
-        const e = lex.get(c);
-        if (e && !AMBIGUOUS_FOODS[c]) {
-          found = { start: i, end: i + 1, entry: e };
-          break;
-        }
-      }
-    }
-    if (found) {
-      spans.push(found);
-      i = found.end;
-    } else i++;
   }
-  return spans;
+  // Segmentación óptima: menos palabras de contenido sin explicar y, a igualdad, menos alimentos
+  // ("arepa con queso campesino" → arepa + queso campesino, no "arepa con queso" + "campesino").
+  const isFiller = (w: string) => STOP.has(w) || DESCRIPTIVE.test(w) || SMALL.test(w) || LARGE.test(w) || UNITS.test(w) || /^\d/.test(w) || w.length <= 2 || PREP_WORDS.some(([re]) => re.test(w));
+  const best: { cost: number; count: number; spans: FoodSpan[] }[] = new Array(n + 1);
+  best[n] = { cost: 0, count: 0, spans: [] };
+  for (let i = n - 1; i >= 0; i--) {
+    const skip = best[i + 1];
+    let b = { cost: skip.cost + (isFiller(tokens[i]) ? 0 : 1), count: skip.count, spans: skip.spans };
+    for (const c of cands[i]) {
+      const rest = best[c.end];
+      const cand = { cost: rest.cost, count: rest.count + 1, spans: [c, ...rest.spans] };
+      if (cand.cost < b.cost || (cand.cost === b.cost && cand.count < b.count) || (cand.cost === b.cost && cand.count === b.count && c.end - c.start > (b.spans[0]?.start === i ? b.spans[0].end - b.spans[0].start : 0))) b = cand;
+    }
+    best[i] = b;
+  }
+  return best[0].spans;
 }
 
 function quantityBefore(tokens: string[], start: number, minIdx: number, taken: Set<number> = new Set()): { quantity: QuantityLevel; custom?: string; consumed: number[] } | undefined {
@@ -678,12 +696,57 @@ function quantityAfter(tokens: string[], end: number, maxIdx: number): { quantit
   return undefined;
 }
 
+/**
+ * Correcciones al hablar:
+ *  - "cheddar, perdón, mozzarella" / "cheddar, mejor dicho mozzarella" → queda mozzarella.
+ *  - "cheddar, mozzarella, perdón" (la disculpa al final) → queda mozzarella.
+ */
+function applyCorrections(tokens: string[], spans: FoodSpan[]): { kept: FoodSpan[]; removed: FoodSpan[] } {
+  let out = [...spans];
+  tokens.forEach((t, m) => {
+    const marker =
+      /^(perdon|perdona|perdoname|corrijo|digo)$/.test(t) || (t === 'dicho' && tokens[m - 1] === 'mejor') || (t === 'sea' && tokens[m - 1] === 'o') || (t === 'no' && tokens[m + 1] !== undefined && /^(era|fue)$/.test(tokens[m + 1]) === false && out.some((s) => s.end === m) && out.some((s) => s.start > m && s.start <= m + 3));
+    if (!marker) return;
+    const before = out.filter((s) => s.end <= m);
+    const after = out.filter((s) => s.start > m);
+    const between = after.length ? tokens.slice(m + 1, after[0].start) : [];
+    const replacesNext = after.length > 0 && between.length <= 2 && !between.some((w) => /^(y|tambien|ademas|luego)$/.test(w));
+    if (replacesNext && before.length) out = out.filter((s) => s !== before[before.length - 1]);
+    else if (!replacesNext && before.length >= 2) out = out.filter((s) => s !== before[before.length - 2]);
+  });
+  return { kept: out, removed: spans.filter((s) => !out.includes(s)) };
+}
+
+const CORRECTION_WORDS = '(?:perdon|perdona|perdoname|corrijo|mejor dicho|o sea|digo|no mejor)';
+const CORRECTION_START = new RegExp(`^${CORRECTION_WORDS}\\b\\s*`);
+const CORRECTION_END = new RegExp(`\\s*\\b${CORRECTION_WORDS}$`);
+
+/** Une las cláusulas que sólo dicen "perdón" a la siguiente (reemplazo) o a la anterior (disculpa al final). */
+function joinCorrectionClauses(cl: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < cl.length; i++) {
+    const c = cl[i];
+    if (!new RegExp(`^${CORRECTION_WORDS}$`).test(c)) {
+      out.push(c);
+      continue;
+    }
+    const next = cl[i + 1];
+    if (next && !/^(y|tambien|ademas)\b/.test(next)) {
+      cl[i + 1] = `${c} ${next}`;
+    } else if (out.length) {
+      out[out.length - 1] = `${out[out.length - 1]} ${c}`;
+    }
+  }
+  return out;
+}
+
 const EATING = /\b(comi|comimos|me comi|desayune|almorce|cene|merende|tome|me tome|tomamos|probe|pique|picamos|bebi|me bebi|almuerzo|desayuno|cena|onces|merienda|mecato|de comida)\b/;
 
 function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: DraftItem[]; unknownAllowed: boolean } {
   const tokens = clause.split(' ').filter(Boolean);
-  const spans = findFoods(tokens, lex);
+  const { kept: spans, removed } = applyCorrections(tokens, findFoods(tokens, lex));
   const consumed = new Set<number>();
+  for (const r of removed) for (let k = r.start; k < r.end; k++) consumed.add(k);
   const items: DraftItem[] = [];
   spans.forEach((sp, idx) => {
     for (let k = sp.start; k < sp.end; k++) consumed.add(k);
@@ -847,13 +910,17 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   }
 
   // Quitar alimentos
-  const rm = whole.match(REMOVE_RE);
+  // Sólo la primera cláusula: "no comí pan, comí arepa" quita el pan y registra la arepa
+  const firstClause = splitClauses(raw)[0] ?? '';
+  const rm = firstClause.match(REMOVE_RE);
+  let skipClauses = 0;
   if (rm) {
     const spans = findFoods(rm[2].split(' '), lex);
     if (spans.length) res.removals = spans.map((s) => s.entry.key);
     else res.removals = [foodKey(rm[2])];
     res.empty = false;
-    if (!/\b(y|tambien|ademas)\b/.test(rm[2])) return res;
+    if (splitClauses(raw).length <= 1 && !/\b(y|tambien|ademas)\b/.test(rm[2])) return res;
+    skipClauses = 1;
   }
 
   // Agua
@@ -870,7 +937,7 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
     res.digestion = /excelente|muy bien|super bien/.test(w) ? 5 : w === 'bien' ? 4 : /regular|mas o menos/.test(w) ? 3 : w === 'mal' ? 2 : 1;
   }
 
-  const clauses = splitClauses(raw);
+  const clauses = joinCorrectionClauses(splitClauses(raw).slice(skipClauses));
   let current: DraftMeal | null = null;
   let lastKind: 'meal' | 'stool' | 'symptom' | null = null;
   const now = ctx.now;
@@ -919,6 +986,15 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
     }
     let forFood = c;
     for (const [re] of SUPPLEMENTS) forFood = forFood.replace(re, ' ');
+    // "perdón, arroz con carne": reemplaza el último alimento dicho
+    const leading = forFood.match(CORRECTION_START);
+    if (leading && !syms.length) {
+      if (current?.items.length) current.items.pop();
+      else if (!res.meals.length) res.replaceLast = true; // corrige algo dicho en un mensaje anterior
+      forFood = forFood.slice(leading[0].length).replace(/^(era|es|fue|eran)\s+/, '');
+    }
+    const trailing = !syms.length && CORRECTION_END.test(forFood);
+    if (trailing) forFood = forFood.replace(CORRECTION_END, '');
     const { items } = parseMealClause(syms.length ? '' : forFood, lex);
     const supplements = SUPPLEMENTS.filter(([re]) => re.test(c)).map(([, name]) => name);
 
@@ -962,6 +1038,8 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
         m.timeExplicit = true;
       }
       for (const it of items) if (!m.items.some((x) => x.key === it.key)) m.items.push(it);
+      // "…cheddar, mozzarella, perdón": la disculpa al final corrige el anterior
+      if (trailing && items.length && m.items.length >= 2) m.items.splice(m.items.length - 1 - items.length, 1);
       for (const s of supplements) if (!m.supplements.includes(s)) m.supplements.push(s);
       if (feeling) m.feelingAfter = feeling;
       lastKind = 'meal';

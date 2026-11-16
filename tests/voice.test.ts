@@ -209,3 +209,31 @@ describe('dictado real (palabras colombianas y diminutivos)', () => {
     expect(P('almorcé un tantico de arroz').meals[0].items[0]).toMatchObject({ key: 'arroz', quantity: 'poca' });
   });
 });
+
+describe('correcciones al hablar', () => {
+  const keys = (t: string) => P(t).meals.flatMap((m) => m.items.map((i) => i.key));
+  it('la frase de la segunda captura: «queso cheddar amozzarella perdón»', () => {
+    const r = P('desayuné un poquitico de kiwi, un poquitico de yogur griego, un poquitico de banano, tres huevitos, queso cheddar amozzarella perdón y pan pan normal con pasas');
+    expect(r.meals[0].items.every((i) => i.known)).toBe(true);
+    expect(keys('desayuné un poquitico de kiwi, un poquitico de yogur griego, un poquitico de banano, tres huevitos, queso cheddar amozzarella perdón y pan pan normal con pasas')).toEqual([
+      'kiwi', 'yogur griego', 'banano', 'huevo', 'queso mozzarella', 'pan', 'pasas',
+    ]);
+  });
+  it('«perdón» / «mejor dicho» antes o después, y «no comí X, comí Y»', () => {
+    expect(keys('almorcé arroz con pollo, perdón, arroz con carne')).toEqual(['arroz', 'carne de res']);
+    expect(keys('cené pasta, mejor dicho lasaña, y una gaseosa')).toEqual(['lasana', 'gaseosa']);
+    expect(keys('desayuné queso cheddar, a mozzarella, perdón, y pan')).toEqual(['queso mozzarella', 'pan']);
+    const r = P('no comí pan, comí arepa');
+    expect(r.removals).toEqual(['pan']);
+    expect(r.meals[0].items.map((i) => i.key)).toEqual(['arepa']);
+  });
+  it('elige la lectura sin palabras sueltas: arepa + queso campesino', () => {
+    expect(keys('desayuné arepa con queso campesino')).toEqual(['arepa', 'queso campesino']);
+    expect(keys('almorcé arroz con pollo')).toEqual(['arroz con pollo']);
+  });
+  it('corrección en un mensaje aparte reemplaza lo último del borrador', () => {
+    let r = handleUtterance(emptySession(), 'desayuné arepa con queso campesino', { now: NOW });
+    r = handleUtterance(r.session, 'perdón, era queso cheddar', { now: NOW });
+    expect(r.session.meals[0].items.map((i) => i.key)).toEqual(['arepa', 'queso cheddar']);
+  });
+});
