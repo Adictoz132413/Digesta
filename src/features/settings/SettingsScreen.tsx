@@ -3,7 +3,7 @@
  * exportación, fotos y almacenamiento, modo demostración, privacidad y borrado.
  */
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Bell, BellOff, CalendarPlus, Download, FlaskConical, HardDrive, Lock, Plus, ShieldAlert, Stethoscope, Trash2, Upload } from 'lucide-react';
+import { RefreshCw, Bell, BellOff, CalendarPlus, Download, FlaskConical, HardDrive, Lock, Plus, ShieldAlert, Stethoscope, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { exportBackupJson, importBackup, parseBackup } from '@/db/backup';
 import type { BackupFile } from '@/db/schemas';
@@ -21,6 +21,7 @@ import { buildIcs, notificationPermission, REMINDER_KINDS, reminderInfo, request
 import { navigate } from '@/lib/router';
 import { Button, Card, IconButton, SectionTitle, Segmented, Stepper, Switch, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
 import { CsvExport } from '@/features/reports/CsvExport';
+import { BUILD_TIME, checkForAppUpdate } from '@/lib/appUpdate';
 import { VoiceSection } from './VoiceSection';
 import { CustomRemindersList } from './CustomRemindersList';
 
@@ -128,7 +129,38 @@ export function SettingsScreen() {
             <p className="mt-2 font-semibold text-bad">Ante una emergencia en Colombia llama al {EMERGENCY_LINE}.</p>
           </div>
         </div>
+        <UpdateButton />
       </Card>
+    </div>
+  );
+}
+
+// ───────── Actualización ─────────
+
+function UpdateButton() {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const built = BUILD_TIME ? formatDateTime(new Date(BUILD_TIME).getTime()) : '';
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await checkForAppUpdate();
+      if (r === 'actualizando') toast('Instalando la versión nueva… la app se recargará.');
+      else if (r === 'al_dia') toast('Ya tienes la última versión.');
+      else if (r === 'sin_conexion') toast('Sin conexión: conéctate a internet para buscar actualizaciones.', { tone: 'error' });
+      else toast('Esta vista no tiene la app instalada; recarga la página para actualizar.', { tone: 'info' });
+    } catch (e) {
+      toast(errorMessage(e), { tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <Button variant="soft" block onClick={run} disabled={busy}>
+        <RefreshCw size={18} className={busy ? 'animate-spin' : ''} /> {busy ? 'Buscando…' : 'Buscar actualización'}
+      </Button>
+      <p className="mt-2 text-center text-xs text-muted">{built ? `Versión instalada: ${built} · ` : ''}Tus registros no se pierden al actualizar.</p>
     </div>
   );
 }

@@ -60,7 +60,7 @@ Una PWA sólo se puede instalar si se abre desde **HTTPS** o desde **localhost**
 
 ### Actualizaciones
 
-Cuando publiques una versión nueva, la app mostrará «Hay una nueva versión de DIGESTA» con el botón **Actualizar**. Tus datos se conservan.
+Cuando publiques una versión nueva, la app mostrará «Hay una nueva versión de DIGESTA» con el botón **Actualizar**. También puedes ir a **Ajustes → Acerca de → Buscar actualización** cuando quieras; ahí se ve la fecha de la versión instalada. Tus datos se conservan.
 
 ## 3. Uso diario en pocos segundos
 
