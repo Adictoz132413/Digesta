@@ -6,10 +6,10 @@
 import { Plus, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { BRISTOL, MEAL_TYPES, PREPARATIONS, QUANTITIES, symptomLabel } from '@/domain/labels';
-import { fromDateTimeInputs, toDateInput, toTimeInput } from '@/domain/dates';
 import { formatMl, glassesToMl, HYDRATION_LEVELS } from '@/domain/hydration';
 import type { BristolType, MealType, Preparation } from '@/domain/types';
 import { mealTimeOf, mealTypeOf, type DraftEdit, type Session } from '@/voice/dialog';
+import { TimeField } from '@/components/TimeField';
 import { Badge, Button, Chip, IconButton, IntensitySlider, Sheet, cx, inputClass } from '@/components/ui';
 
 export function DraftEditor({
@@ -66,19 +66,16 @@ export function DraftEditor({
                   </option>
                 ))}
               </select>
-              <input
-                aria-label="Hora de la comida"
-                type="time"
-                className={cx(inputClass, 'min-h-10 !w-36 shrink-0 py-1 text-sm')}
-                value={toTimeInput(at)}
-                onChange={(e) => e.target.value && onEdit({ kind: 'meal', mealId: m.id, patch: { at: fromDateTimeInputs(toDateInput(at), e.target.value) } })}
-              />
+
               <IconButton label="Quitar esta comida" onClick={() => onEdit({ kind: 'removeMeal', mealId: m.id })} className="size-10 text-bad">
                 <Trash2 size={18} />
               </IconButton>
             </div>
 
-            <ul className="mt-3 space-y-3">
+            <div className="mt-3">
+              <TimeField label="Hora" value={at} onChange={(t) => onEdit({ kind: 'meal', mealId: m.id, patch: { at: t } })} />
+            </div>
+            <ul className="space-y-3">
               {m.items.map((it, idx) => (
                 <ItemEditor key={`${it.key}-${idx}`} mealId={m.id} index={idx} item={it} unknown={!it.known && !m.accepted.includes(it.key)} onEdit={onEdit} />
               ))}

@@ -6,7 +6,7 @@ import { Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { deleteSymptom, saveSymptom } from '@/db/repo';
 import { SYMPTOMS, intensityWord, symptomDef } from '@/domain/labels';
-import { formatDateTime, formatDuration, fromDateTimeInputs, toDateInput, toTimeInput } from '@/domain/dates';
+import { formatDateTime, formatDuration } from '@/domain/dates';
 import type { AbdomenZone, Symptom, SymptomType } from '@/domain/types';
 import { symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import { AbdomenMap } from '@/components/illustrations';
@@ -206,9 +206,8 @@ export function SymptomSheet({
           ]}
         />
         {status === 'termino' && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <input aria-label="Fecha de fin" type="date" className={inputClass} value={toDateInput(endedAt)} onChange={(e) => e.target.value && setEndedAt(fromDateTimeInputs(e.target.value, toTimeInput(endedAt)))} />
-            <input aria-label="Hora de fin" type="time" className={inputClass} value={toTimeInput(endedAt)} onChange={(e) => e.target.value && setEndedAt(fromDateTimeInputs(toDateInput(endedAt), e.target.value))} />
+          <div className="mt-3">
+            <TimeField label="¿Cuándo se te pasó?" value={endedAt} onChange={setEndedAt} />
           </div>
         )}
         {status === 'duracion' && (

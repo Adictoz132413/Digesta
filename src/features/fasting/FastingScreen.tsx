@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react';
 import { getDb } from '@/db/db';
 import { deleteFast, endFast, openFast, startFast, updateFast } from '@/db/fasting';
 import { loadAll, updateSettings } from '@/db/repo';
-import { formatDateTime, formatDuration, formatTime, fromDateTimeInputs, HOUR, relativeDayLabel, dayKey, toDateInput, toTimeInput } from '@/domain/dates';
+import { formatDateTime, formatDuration, formatTime, HOUR, relativeDayLabel, dayKey } from '@/domain/dates';
 import {
   ALLOWED_DURING_FAST,
   BREAK_FAST_TIPS,
@@ -32,7 +32,7 @@ import type { Fast, FastProtocol } from '@/domain/types';
 import { analyzeFasting } from '@/analysis/fasting';
 import { useEntry } from '@/features/entries/EntryProvider';
 import { TimeField } from '@/components/TimeField';
-import { Badge, Button, Card, Chip, EmptyState, Field, IconButton, IntensitySlider, SectionTitle, Segmented, Sheet, Stepper, TextArea, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
+import { Badge, Button, Card, Chip, EmptyState, Field, IconButton, IntensitySlider, SectionTitle, Segmented, Sheet, Stepper, TextArea, cx, errorMessage, useConfirm, useToast } from '@/components/ui';
 import { useNow, useSettings } from '@/lib/hooks';
 
 const hm = (hours: number) => formatDuration(Math.round(hours * 60));
@@ -160,7 +160,7 @@ function Planner({ protocol, customHours }: { protocol: FastProtocol; customHour
         )}
 
         <div className="mt-5">
-          <TimeField label="Última comida (inicio del ayuno)" value={startAt} onChange={setStartAt} />
+          <TimeField label="Última comida (inicio del ayuno)" value={startAt} onChange={setStartAt} allowFuture />
           <div className="-mt-2 mb-2 flex flex-wrap gap-2">
             <Chip size="sm" onClick={() => evening(19)}>
               Esta noche 7:00 p. m.
@@ -291,9 +291,8 @@ function ActiveFast({ fast, now, onEnd }: { fast: Fast; now: number; onEnd: () =
           </button>
         </p>
         {editing && (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <input aria-label="Fecha de inicio" type="date" className={inputClass} value={toDateInput(fast.startAt)} onChange={(e) => e.target.value && void updateFast(fast.id, { startAt: fromDateTimeInputs(e.target.value, toTimeInput(fast.startAt)) }).catch((er) => toast(errorMessage(er), { tone: 'error' }))} />
-            <input aria-label="Hora de inicio" type="time" className={inputClass} value={toTimeInput(fast.startAt)} onChange={(e) => e.target.value && void updateFast(fast.id, { startAt: fromDateTimeInputs(toDateInput(fast.startAt), e.target.value) }).catch((er) => toast(errorMessage(er), { tone: 'error' }))} />
+          <div className="mt-2">
+            <TimeField label="Hora de inicio" value={fast.startAt} onChange={(t) => void updateFast(fast.id, { startAt: t }).catch((er) => toast(errorMessage(er), { tone: 'error' }))} />
           </div>
         )}
 

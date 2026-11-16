@@ -196,6 +196,8 @@ export function MealSheet({ open, onClose, meal, template, initialAt, onAddSympt
         ))}
       </div>
 
+      {meal && <TimeField label="¿A qué hora fue?" value={d.at} onChange={(at) => setD((x) => ({ ...x, at }))} />}
+
       <FoodPicker onAdd={addItem} selectedKeys={d.items.map((i) => i.key)} />
 
       {error && (
@@ -212,7 +214,7 @@ export function MealSheet({ open, onClose, meal, template, initialAt, onAddSympt
         </ul>
       )}
 
-      <TimeField value={d.at} onChange={(at) => setD((x) => ({ ...x, at }))} />
+      {!meal && <TimeField value={d.at} onChange={(at) => setD((x) => ({ ...x, at }))} />}
 
       <Field label="Contiene" hint="Se marca automáticamente según los alimentos; puedes ajustarlo.">
         <div className="flex flex-wrap gap-2">
