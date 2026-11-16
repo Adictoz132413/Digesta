@@ -2,7 +2,7 @@
 import { Mic } from 'lucide-react';
 import { useState } from 'react';
 import { installOnDevice, onDeviceStatus, readVoicePrefs, recognitionSupported, ttsSupported, writeVoicePrefs, type OnDeviceStatus, type VoicePrefs } from '@/voice/speech';
-import { Button, Card, SectionTitle, Switch, useToast } from '@/components/ui';
+import { Button, Card, SectionTitle, Segmented, Switch, useToast } from '@/components/ui';
 import { navigate } from '@/lib/router';
 
 const STATUS_TEXT: Record<OnDeviceStatus, string> = {
@@ -36,6 +36,21 @@ export function VoiceSection() {
         {recognitionSupported() && (
           <>
             <Switch checked={prefs.autoListen} onChange={(autoListen) => update({ autoListen })} label="Conversación continua" description="Después de cada pregunta vuelve a escuchar sin tocar el micrófono." />
+            <div className="py-2">
+              <p className="font-medium">Cuándo enviar lo que dictas</p>
+              <p className="mb-2 text-sm text-muted">El micrófono sigue escuchando aunque hagas pausas. Elige cuánto silencio esperar antes de enviar solo.</p>
+              <Segmented
+                label="Pausa antes de enviar"
+                value={prefs.pauseSeconds}
+                onChange={(pauseSeconds) => update({ pauseSeconds })}
+                options={[
+                  { value: 3, label: '3 s' },
+                  { value: 5, label: '5 s' },
+                  { value: 8, label: '8 s' },
+                  { value: 0, label: 'Al tocar Listo' },
+                ]}
+              />
+            </div>
             <div className="mt-2 rounded-2xl bg-surface-2 p-3 text-sm">
               <p className="font-semibold">Reconocimiento sin conexión</p>
               {status === 'sin_comprobar' ? (

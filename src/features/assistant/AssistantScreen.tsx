@@ -5,7 +5,7 @@
  */
 import * as Dialog from '@radix-ui/react-dialog';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Keyboard, Mic, MicOff, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, Keyboard, Mic, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDb } from '@/db/db';
 import { foodHistory, getDailyLog, getSettings, loadAll, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
@@ -127,8 +127,10 @@ export function AssistantScreen() {
     }
     stopSpeaking();
     recRef.current?.abort();
+    const pause = readVoicePrefs().pauseSeconds;
     const rec = createRecognizer({
       onDevice,
+      silenceMs: pause > 0 ? pause * 1000 : null,
       onStart: () => setListening(true),
       onPartial: setPartial,
       onFinal: (t) => {
@@ -150,6 +152,10 @@ export function AssistantScreen() {
   }, [device, toast]);
 
   const stopListening = () => recRef.current?.stop();
+  const cancelListening = () => {
+    recRef.current?.abort();
+    lastWasVoice.current = false;
+  };
 
   /** Responde en pantalla (y en voz alta) y, si corresponde, vuelve a escuchar. */
   const respond = useCallback(
@@ -391,7 +397,24 @@ export function AssistantScreen() {
         ))}
         {(listening || partial) && (
           <div className="flex justify-end">
-            <div className="max-w-[88%] rounded-3xl rounded-br-lg border-2 border-dashed border-primary px-4 py-3 text-[15px] text-muted">{partial || 'Te escucho…'}</div>
+            <div className="max-w-[88%] rounded-3xl rounded-br-lg border-2 border-dashed border-primary px-4 py-3 text-[15px]">
+              <p className={partial ? 'text-text' : 'text-muted'}>{partial || 'Te escucho… habla con calma, puedes hacer pausas.'}</p>
+              {listening && (
+                <>
+                  <p className="mt-2 text-xs text-muted">
+                    {prefs.pauseSeconds > 0 ? `Toca «Listo» cuando termines, o se envía solo tras ${prefs.pauseSeconds} s de silencio.` : 'Toca «Listo» cuando termines.'}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button type="button" onClick={stopListening} className="min-h-10 flex-1 rounded-full bg-primary px-4 text-sm font-bold text-on-primary">
+                      Listo, enviar
+                    </button>
+                    <button type="button" onClick={cancelListening} className="min-h-10 rounded-full border border-border px-4 text-sm font-semibold">
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -448,12 +471,12 @@ export function AssistantScreen() {
           <button
             type="button"
             onClick={() => (listening ? stopListening() : void startListening())}
-            aria-label={listening ? 'Dejar de escuchar' : 'Hablar'}
+            aria-label={listening ? 'Listo, enviar lo dictado' : 'Hablar'}
             aria-pressed={listening}
-            className={cx('relative flex size-16 shrink-0 items-center justify-center rounded-full shadow-card transition active:scale-95', listening ? 'bg-bad text-white' : 'bg-primary text-on-primary')}
+            className={cx('relative flex size-16 shrink-0 items-center justify-center rounded-full shadow-card transition active:scale-95', listening ? 'bg-good text-white' : 'bg-primary text-on-primary')}
           >
-            {listening && <span className="absolute inset-0 animate-ping rounded-full bg-bad/40" aria-hidden />}
-            {listening ? <MicOff size={28} /> : <Mic size={28} />}
+            {listening && <span className="absolute inset-0 animate-ping rounded-full bg-good/40" aria-hidden />}
+            {listening ? <Check size={30} /> : <Mic size={28} />}
           </button>
         ) : (
           <button type="button" onClick={() => inputRef.current?.focus()} aria-label="Usar el teclado" className="flex size-16 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted">

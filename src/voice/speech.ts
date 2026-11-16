@@ -100,12 +100,41 @@ const ERRORS: Record<string, string> = {
 
 export interface Recognizer {
   start(): void;
+  /** Termina y envía lo dictado. */
   stop(): void;
+  /** Termina sin enviar nada. */
   abort(): void;
 }
 
+/**
+ * Une un nuevo fragmento final al texto acumulado sin duplicar.
+ * En Chrome para Android, con escucha continua, a veces cada resultado repite
+ * todo lo anterior ("comí arroz" → "comí arroz y fríjoles").
+ */
+export function mergeTranscript(acc: string, seg: string): string {
+  const a = acc.trim();
+  const b = seg.trim();
+  if (!a) return b;
+  if (!b) return a;
+  const na = a.toLowerCase();
+  const nb = b.toLowerCase();
+  if (nb.startsWith(na)) return b; // el nuevo trae todo lo anterior
+  if (na.endsWith(nb) || na.includes(nb)) return a; // repetido
+  return `${a} ${b}`;
+}
+
+/**
+ * Dictado largo: sigue escuchando aunque hagas pausas. Termina cuando la persona
+ * toca "Listo" (stop), cuando pasa `silenceMs` sin hablar (si se indicó) o al
+ * llegar a `maxMs`. Si el navegador corta solo (Android lo hace tras unos
+ * segundos), se reinicia sin perder el texto.
+ */
 export function createRecognizer(opts: {
   onDevice: boolean;
+  /** Silencio (ms) tras el cual se envía solo. null = sólo al tocar "Listo". */
+  silenceMs?: number | null;
+  /** Duración máxima de un dictado. */
+  maxMs?: number;
   onPartial: (text: string) => void;
   onFinal: (text: string) => void;
   onError: (message: string, code: string) => void;
@@ -114,43 +143,117 @@ export function createRecognizer(opts: {
 }): Recognizer | undefined {
   const C = ctor();
   if (!C) return undefined;
-  const r = new C();
-  r.lang = VOICE_LANG;
-  r.continuous = false;
-  r.interimResults = true;
-  r.maxAlternatives = 1;
-  if (opts.onDevice && 'processLocally' in r) r.processLocally = true;
+  const silenceMs = opts.silenceMs === undefined ? 5000 : opts.silenceMs;
+  const maxMs = opts.maxMs ?? 3 * 60_000;
   let finalText = '';
-  r.onstart = () => opts.onStart?.();
-  r.onresult = (e) => {
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const res = e.results[i];
-      if (res.isFinal) finalText += `${res[0].transcript} `;
-      else interim += res[0].transcript;
+  let interim = '';
+  let wanted = false; // la persona sigue dictando
+  let discard = false;
+  let finished = false;
+  let restarts = 0;
+  let current: SR | null = null;
+  let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  let maxTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const text = () => mergeTranscript(finalText, interim);
+
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    wanted = false;
+    clearTimeout(silenceTimer);
+    clearTimeout(maxTimer);
+    const t = text().trim();
+    try {
+      current?.abort();
+    } catch {
+      /* ya terminó */
     }
-    opts.onPartial((finalText + interim).trim());
-  };
-  r.onerror = (e) => {
-    const msg = ERRORS[e.error] ?? `Error de reconocimiento de voz (${e.error}).`;
-    if (msg) opts.onError(msg, e.error);
-  };
-  r.onend = () => {
-    const t = finalText.trim();
-    finalText = '';
-    if (t) opts.onFinal(t);
+    if (t && !discard) opts.onFinal(t);
     opts.onEnd();
   };
+
+  const armSilence = () => {
+    clearTimeout(silenceTimer);
+    if (silenceMs !== null && text()) silenceTimer = setTimeout(finish, silenceMs);
+  };
+
+  const open = () => {
+    const r = new C();
+    current = r;
+    r.lang = VOICE_LANG;
+    r.continuous = true;
+    r.interimResults = true;
+    r.maxAlternatives = 1;
+    if (opts.onDevice && 'processLocally' in r) r.processLocally = true;
+    r.onstart = () => {
+      if (restarts === 0) opts.onStart?.();
+    };
+    r.onresult = (e) => {
+      let live = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) finalText = mergeTranscript(finalText, res[0].transcript);
+        else live += res[0].transcript;
+      }
+      interim = live;
+      opts.onPartial(text());
+      armSilence();
+    };
+    r.onerror = (e) => {
+      if (e.error === 'no-speech' || e.error === 'aborted') return; // se reintenta en onend
+      wanted = false;
+      const msg = ERRORS[e.error] ?? `Error de reconocimiento de voz (${e.error}).`;
+      if (msg) opts.onError(msg, e.error);
+    };
+    r.onend = () => {
+      // Lo que quedó a medias se conserva
+      if (interim) {
+        finalText = mergeTranscript(finalText, interim);
+        interim = '';
+      }
+      if (wanted && !finished && restarts < 60) {
+        restarts++;
+        setTimeout(() => {
+          if (wanted && !finished) {
+            try {
+              open();
+            } catch {
+              finish();
+            }
+          }
+        }, 150);
+        return;
+      }
+      finish();
+    };
+    r.start();
+  };
+
   return {
     start: () => {
+      if (wanted) return;
+      wanted = true;
+      maxTimer = setTimeout(finish, maxMs);
       try {
-        r.start();
+        open();
       } catch {
-        /* ya estaba escuchando */
+        finish();
       }
     },
-    stop: () => r.stop(),
-    abort: () => r.abort(),
+    stop: () => {
+      wanted = false;
+      try {
+        current?.stop(); // entrega los últimos resultados y luego onend → finish
+      } catch {
+        finish();
+      }
+      setTimeout(finish, 1500); // respaldo si el navegador no llama a onend
+    },
+    abort: () => {
+      discard = true;
+      finish();
+    },
   };
 }
 
@@ -210,10 +313,12 @@ export interface VoicePrefs {
   autoListen: boolean;
   /** La persona aceptó usar el dictado de Chrome que puede usar la nube. */
   cloudConsent: boolean;
+  /** Segundos de silencio para enviar solo; 0 = sólo al tocar "Listo". */
+  pauseSeconds: number;
 }
 
 const PREFS_KEY = 'digesta:voz';
-export const DEFAULT_VOICE_PREFS: VoicePrefs = { tts: true, autoListen: true, cloudConsent: false };
+export const DEFAULT_VOICE_PREFS: VoicePrefs = { tts: true, autoListen: true, cloudConsent: false, pauseSeconds: 5 };
 
 export function readVoicePrefs(): VoicePrefs {
   try {
