@@ -3,7 +3,7 @@ import { getDb, openDbForTests } from '@/db/db';
 import { saveMeal } from '@/db/repo';
 import { parseUtterance } from '@/voice/nlu';
 import { addRefMeal, emptySession, handleUtterance, toRecords } from '@/voice/dialog';
-import { moveSavedFoods } from '@/voice/moveSaved';
+import { findSavedMeal, moveSavedFoods } from '@/voice/moveSaved';
 
 const NOW = new Date(2026, 10, 16, 18, 20).getTime();
 const FOUR_PM = new Date(2026, 10, 16, 16, 0).getTime();
@@ -59,5 +59,50 @@ describe('mover alimentos ya guardados', () => {
       ['cena', NOW - 600_000, ['arroz con pollo']],
     ]);
     expect(await moveSavedFoods({ keys: ['salchipapa'], at: FOUR_PM }, NOW)).toBeUndefined();
+  });
+});
+
+describe('pedir que corrija algo guardado (sexta captura)', () => {
+  const SIXTH = 'Necesito que corrijas la cena que me pusiste de lo del batido de proteína';
+  it('se entiende como un pedido de corrección, no como comida', () => {
+    const r = parseUtterance(SIXTH, { now: NOW });
+    expect(r.editRequest).toEqual({ mealType: 'cena', keys: ['batido de proteina'], dayOffset: undefined });
+    expect(r.meals).toHaveLength(0);
+    expect(parseUtterance('arregla el desayuno de ayer', { now: NOW }).editRequest).toMatchObject({ mealType: 'desayuno', dayOffset: -1 });
+    expect(parseUtterance('corrige lo que me pusiste', { now: NOW }).editRequest).toMatchObject({ keys: [] });
+    // Con una hora nueva sigue siendo un cambio de hora
+    expect(parseUtterance('corrige, el batido me lo tomé a las 4 de la tarde', { now: NOW }).moveRef?.at).toBe(FOUR_PM);
+    // "necesito" y "corrijas" nunca son alimentos
+    expect(parseUtterance('necesito que anotes arroz', { now: NOW }).meals.flatMap((m) => m.items.map((i) => i.key))).toEqual(['arroz']);
+  });
+
+  it('si está en el borrador, se corrige ahí; si no, se busca en lo guardado', async () => {
+    let r = handleUtterance(emptySession(), 'cené arroz y un batido de proteína', { now: NOW });
+    r = handleUtterance(r.session, SIXTH, { now: NOW });
+    expect(r.editRequest?.inDraft).toBe(true);
+    const r2 = handleUtterance(emptySession(), SIXTH, { now: NOW });
+    expect(r2.editRequest?.inDraft).toBe(false);
+  });
+});
+
+describe('buscar la comida guardada a corregir', () => {
+  let n = 0;
+  beforeEach(() => {
+    openDbForTests(`test-find-${n++}`);
+  });
+  it('encuentra la cena más reciente con el batido', async () => {
+    await saveMeal({ at: NOW - 30 * 3600_000, mealType: 'cena', items: [{ name: 'Pasta', key: 'pasta', quantity: 'normal' }], flags: [], supplements: [] });
+    const target = await saveMeal({ at: NOW - 600_000, mealType: 'cena', items: [{ name: 'Leche', key: 'leche', quantity: 'normal' }, { name: 'Batido de proteína', key: 'batido de proteina', quantity: 'normal' }], flags: [], supplements: [] });
+    expect((await findSavedMeal({ mealType: 'cena', keys: ['batido de proteina'] }, NOW))?.id).toBe(target.id);
+    expect((await findSavedMeal({ mealType: 'cena', keys: [], dayOffset: -1 }, NOW))?.items[0].key).toBe('pasta');
+    expect(await findSavedMeal({ mealType: 'desayuno', keys: [] }, NOW)).toBeUndefined();
+  });
+});
+
+describe('batido con leche', () => {
+  it('la leche es ingrediente del batido', () => {
+    const items = parseUtterance('de cena me tomé un batido de proteína con leche', { now: NOW }).meals[0].items;
+    expect(items.map((i) => i.key)).toEqual(['batido de proteina']);
+    expect(items[0].ingredients).toEqual(['Leche']);
   });
 });

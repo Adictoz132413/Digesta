@@ -19,7 +19,8 @@ import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
 import { addRefMeal, editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
 import { DraftEditor } from './DraftEditor';
-import { moveSavedFoods } from '@/voice/moveSaved';
+import { findSavedMeal, moveSavedFoods } from '@/voice/moveSaved';
+import { mealTypeLabel } from '@/domain/labels';
 import {
   createRecognizer,
   installOnDevice,
@@ -244,6 +245,26 @@ export function AssistantScreen() {
       }
       if (r.reminder) {
         void createReminder(r.reminder).then((msg) => respond(`${msg}${r.question ? ` ${r.question.text}` : ''}`, r.question));
+        return;
+      }
+      if (r.editRequest) {
+        const er = r.editRequest;
+        if (er.inDraft) {
+          respond('Te abro la ficha en borrador para que la corrijas.', r.question);
+          setEditorOpen(true);
+          return;
+        }
+        void findSavedMeal(er)
+          .then((meal) => {
+            const what = er.mealType ? `${er.mealType === 'cena' || er.mealType === 'merienda' || er.mealType === 'bebida' ? 'la' : 'el'} ${mealTypeLabel(er.mealType).toLowerCase()}` : 'esa comida';
+            if (!meal) {
+              respond(`No encontré ${what} entre lo que guardaste en los últimos días. Puedes buscarla en Diario → Comidas y tocarla para corregirla.`, r.question);
+              return;
+            }
+            respond(`Te abrí ${meal.mealType === 'bebida' ? 'la bebida' : `${meal.mealType === 'cena' || meal.mealType === 'merienda' ? 'la' : 'el'} ${mealTypeLabel(meal.mealType).toLowerCase()}`} de las ${formatTime(meal.at)} (${meal.items.map((i) => i.name.toLowerCase()).join(', ')}). Corrige lo que necesites y toca «Guardar cambios».`, r.question);
+            entry.openMeal({ meal });
+          })
+          .catch((e) => respond(`No pude abrir esa comida: ${errorMessage(e)}`, r.question));
         return;
       }
       if (r.moveSaved) {

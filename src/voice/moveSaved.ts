@@ -25,3 +25,22 @@ export async function moveSavedFoods(ref: { keys: string[]; at: number }, now = 
   await saveMeal({ at: ref.at, mealType: typeFor(moving), items: moving, flags: deriveFlags(keysOfItems(moving)), supplements: [], notes: 'Hora corregida por voz' });
   return { names: moving.map((i) => i.name), split: true };
 }
+
+/**
+ * Busca la comida guardada a la que se refiere un pedido de corrección:
+ * la más reciente (72 h, o el día indicado) del tipo y con los alimentos mencionados.
+ */
+export async function findSavedMeal(req: { mealType?: Meal['mealType']; keys: string[]; dayOffset?: number }, now = Date.now()): Promise<Meal | undefined> {
+  let from = now - 72 * 3600_000;
+  let to = now + 60_000;
+  if (req.dayOffset !== undefined) {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + req.dayOffset);
+    from = d.getTime();
+    to = from + 24 * 3600_000;
+  }
+  const list = await getDb().meals.where('at').between(from, to, true, false).reverse().sortBy('at');
+  const has = (m: Meal) => !req.keys.length || m.items.some((i) => req.keys.includes(i.key) || (i.ingredients ?? []).some((x) => req.keys.includes(x.toLowerCase())));
+  return list.find((m) => (!req.mealType || m.mealType === req.mealType) && has(m)) ?? (req.mealType && req.keys.length ? list.find(has) : undefined);
+}

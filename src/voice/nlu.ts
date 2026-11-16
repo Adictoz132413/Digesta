@@ -108,6 +108,8 @@ export interface ParseResult {
   number?: number;
   /** Inicio o fin de un ayuno intermitente ("empiezo el ayuno", "rompí el ayuno"). */
   fast?: { kind: 'start' | 'end'; at: number };
+  /** "Corrige la cena que me pusiste": abrir esa comida guardada para editarla. */
+  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number };
   /** "El batido que registraste me lo tomé a las 4": mover esos alimentos a otra hora. */
   moveRef?: { keys: string[]; names: string[]; at: number };
   /** Empezó con "perdón"/"mejor dicho": lo que sigue reemplaza el último alimento del borrador. */
@@ -243,7 +245,11 @@ const STOP = new Set(
     'favor gracias listo ok vale dale bueno super tan pues entonces osea igual tal vez quizas creo parece senti siento cayo quede ' +
     'acompanado acompanada acompanamiento plus adicional extra lado parte ' +
     'ayuno ayunar ayunando rompi rompo termine termino empiezo empece inicio inicie arranco arranque comienzo comence ' +
-    'perdon perdona perdoname digo corrijo dicho sea eh ehh mmm ah este esto pues bueno'
+    'perdon perdona perdoname digo corrijo dicho sea eh ehh mmm ah este esto pues bueno ' +
+    'necesito necesitas quiero quisiera puedes podrias corrijas corrige corregir corrigeme arregla arreglar arreglame arregles ' +
+    'cambia cambiar cambiame cambies modifica modificar modifiques edita editar edites quites borres pongas ayudame ayuda favor lo del lo de ' +
+    'anota anotes anotar anotame registra registres registrar registrame apunta apuntes apuntar apuntame agrega agregues agregar agregame ' +
+    'pon ponme ponle guarda guardes guardar escribe escribas escribir mete metele suma sumale incluye incluyas'
   ).split(' '),
 );
 
@@ -623,15 +629,19 @@ function findFoods(rawTokens: string[], lex: Map<string, LexEntry>): FoodSpan[] 
   // Segmentación óptima: menos palabras de contenido sin explicar y, a igualdad, menos alimentos
   // ("arepa con queso campesino" → arepa + queso campesino, no "arepa con queso" + "campesino").
   const isFiller = (w: string) => STOP.has(w) || DESCRIPTIVE.test(w) || SMALL.test(w) || LARGE.test(w) || UNITS.test(w) || /^\d/.test(w) || w.length <= 2 || PREP_WORDS.some(([re]) => re.test(w));
-  const best: { cost: number; count: number; spans: FoodSpan[] }[] = new Array(n + 1);
-  best[n] = { cost: 0, count: 0, spans: [] };
+  // Criterios: 1) menos palabras de contenido sin explicar, 2) más palabras cubiertas por alimentos,
+  // 3) menos alimentos (prefiere "arroz con pollo" a "arroz" + "pollo").
+  type Best = { cost: number; covered: number; count: number; spans: FoodSpan[] };
+  const better = (a: Best, b: Best) => a.cost < b.cost || (a.cost === b.cost && (a.covered > b.covered || (a.covered === b.covered && a.count < b.count)));
+  const best: Best[] = new Array(n + 1);
+  best[n] = { cost: 0, covered: 0, count: 0, spans: [] };
   for (let i = n - 1; i >= 0; i--) {
     const skip = best[i + 1];
-    let b = { cost: skip.cost + (isFiller(tokens[i]) ? 0 : 1), count: skip.count, spans: skip.spans };
+    let b: Best = { cost: skip.cost + (isFiller(tokens[i]) ? 0 : 1), covered: skip.covered, count: skip.count, spans: skip.spans };
     for (const c of cands[i]) {
       const rest = best[c.end];
-      const cand = { cost: rest.cost, count: rest.count + 1, spans: [c, ...rest.spans] };
-      if (cand.cost < b.cost || (cand.cost === b.cost && cand.count < b.count) || (cand.cost === b.cost && cand.count === b.count && c.end - c.start > (b.spans[0]?.start === i ? b.spans[0].end - b.spans[0].start : 0))) b = cand;
+      const cand: Best = { cost: rest.cost, covered: rest.covered + (c.end - c.start), count: rest.count + 1, spans: [c, ...rest.spans] };
+      if (better(cand, b)) b = cand;
     }
     best[i] = b;
   }
@@ -723,6 +733,11 @@ function applyCorrections(tokens: string[], spans: FoodSpan[]): { kept: FoodSpan
 /** Platos que "contienen" lo que se nombra después con "de" o "con". */
 const COMPOSITE = new Set(['omelette', 'sandwich', 'wrap', 'crepe', 'ensalada', 'pizza', 'hamburguesa', 'perro caliente', 'arepa', 'tostadas', 'sopa', 'batido de proteina', 'empanada', 'tortilla'].map(foodKey));
 
+/** Pide corregir algo ya registrado. */
+const EDIT_REQUEST = /\b(corrij\w*|corrig\w*|arregl\w*|modific\w*|edit(a|ar|ame|es)|cambi(a|ar|ame|es) (la|el|lo)\b.*\b(que me (pusiste|registraste|anotaste)|guardad))/;
+/** …pero si trae una hora nueva, es un cambio de hora ("corrige: el batido me lo tomé a las 4"). */
+const REF_MOVE_TIME = /\bme (lo|la|los|las) (tome|comi|bebi)\b.*\b(a las?|a la|hace)\b|\b(fue|era) (a las?|como a las)\b/;
+
 /** Se refiere a algo ya registrado ("que pusiste", "me lo tomé a las 4"). */
 const REF_MOVE =
   /\b(pusiste|registraste|anotaste|apuntaste|guardaste|escribiste|agregaste|pusimos|registramos|anotamos)\b|\bme (lo|la|los|las) (tome|comi|bebi|desayune|almorce|cene)\b.*\b(a las?|a la|hace|como a las)\b|\b(eso|ese|esa|esos|esas) (fue|era|fueron|eran) (a las?|como a las|hace)\b/;
@@ -768,7 +783,8 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
       const between = tokens.slice(prevEnd, allSpans[j].start);
       const linked = between.length > 0 && between.length <= 4 && /^(de|con)$/.test(between[0]) || (between.length >= 1 && between.length <= 3 && between[0] === 'y' && ingredientsOf.has(parent));
       const onlyFiller = between.every((w) => /^(de|con|y|el|la|los|las|\d+)$/.test(w) || SMALL.test(w) || LARGE.test(w));
-      if (!linked || !onlyFiller || isBeverage(allSpans[j].entry.key) || COMPOSITE.has(allSpans[j].entry.key)) break;
+      // Una bebida sólo es ingrediente de otra bebida ("batido de proteína con leche"), no de un plato ("sándwich… y una gaseosa")
+      if (!linked || !onlyFiller || (isBeverage(allSpans[j].entry.key) && !isBeverage(parent.entry.key)) || COMPOSITE.has(allSpans[j].entry.key)) break;
       ingredientsOf.set(parent, [...(ingredientsOf.get(parent) ?? []), allSpans[j]]);
       childSpans.add(allSpans[j]);
       prevEnd = allSpans[j].end;
@@ -951,6 +967,21 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   if (fastStart || fastEnd) {
     res.fast = { kind: fastEnd ? 'end' : 'start', at: parseTime(whole, ctx.now) ?? ctx.now };
     res.empty = false;
+  }
+
+  // Pedido de corregir algo guardado: "corrige la cena que me pusiste", "arregla lo del batido"
+  if (EDIT_REQUEST.test(whole) && !REF_MOVE_TIME.test(whole)) {
+    const spans = findFoods(whole.split(' ').filter(Boolean), lex);
+    const mealType = detectMealType(whole.replace(/\bcorrij\w*|\bcorrig\w*/g, ' '));
+    if (spans.length || mealType || /\b(lo que|que me|que (pusiste|registraste|anotaste|guardaste))\b/.test(whole)) {
+      res.editRequest = {
+        mealType,
+        keys: [...new Set(spans.map((s) => s.entry.key))],
+        dayOffset: /\b(antier|anteayer)\b/.test(whole) ? -2 : /\b(ayer|anoche)\b/.test(whole) ? -1 : /\bhoy\b/.test(whole) ? 0 : undefined,
+      };
+      res.empty = false;
+      return res;
+    }
   }
 
   // Corrección de hora de algo ya dicho: "el batido que registraste … me lo tomé a las 4 de la tarde"

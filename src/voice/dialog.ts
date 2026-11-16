@@ -98,6 +98,8 @@ export interface Reply {
   reminder?: { at: number; text: string; daily: boolean };
   /** Cambiar la hora de alimentos ya guardados (no estaban en el borrador). */
   moveSaved?: { keys: string[]; names: string[]; at: number };
+  /** Abrir una comida guardada (o del borrador) para corregirla. */
+  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number; inDraft?: boolean };
 }
 
 export function emptySession(): Session {
@@ -791,6 +793,13 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
 
   const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
+
+  if (p.editRequest) {
+    // ¿Está en el borrador? Entonces se corrige ahí mismo.
+    const er = p.editRequest;
+    const inDraft = s.meals.some((m) => (er.mealType ? mealTypeOf(m, ctx.now) === er.mealType : true) && (!er.keys.length || m.items.some((i) => er.keys.includes(i.key))));
+    return { session: s, text: '', question: s.pending, editRequest: { ...er, inDraft } };
+  }
 
   if (p.moveRef) {
     const moved = moveInDraft(s, p.moveRef, ctx.now);
