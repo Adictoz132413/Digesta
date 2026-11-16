@@ -12,7 +12,7 @@
  * diálogo pregunte.
  */
 import { DAY, HOUR } from '@/domain/dates';
-import { FOOD_CATALOG, foodKey, prettyName } from '@/domain/foods';
+import { FOOD_CATALOG, catalogFood, foodKey, prettyName } from '@/domain/foods';
 import type {
   AbdomenZone,
   BloodPresence,
@@ -212,7 +212,8 @@ const SUPPLEMENTS: [RegExp, string][] = [
 
 const PREP_WORDS: [RegExp, Preparation][] = [
   [/^(frit[oa]s?|apanad[oa]s?|freid[oa]s?|salteado?s?|salteadas?)$/, 'frito'],
-  [/^(asad[oa]s?|plancha|parrilla|a la plancha|tostad[oa]s?|dorad[oa]s?)$/, 'asado'],
+  [/^(asad[oa]s?|plancha|parrilla|a la plancha|dorad[oa]s?)$/, 'asado'],
+  [/^(tostad[oa]s?|tostadit[oa]s?)$/, 'tostado'],
   [/^(cocid[oa]s?|cocinad[oa]s?|hervid[oa]s?|sancochad[oa]s?)$/, 'cocido'],
   [/^vapor$/, 'al_vapor'],
   [/^(hornead[oa]s?|horno|gratinad[oa]s?)$/, 'horneado'],
@@ -225,7 +226,7 @@ const PREP_WORDS: [RegExp, Preparation][] = [
 
 const SMALL = /^(poquit[oa]s?|poquitic[oa]s?|poquitin|poquito|poco|poca|pocos|pocas|pequen[oa]s?|pequenit[oa]s?|mitad|media|medio|chiquit[oa]s?|chiquitic[oa]s?|tantic[oa]|tantit[oa]|pizca|pizquita|porcioncita|pedacit[oa]|probadita|mordisco|un poco)$/;
 const LARGE = /^(mucho|mucha|muchos|muchas|muchisim[oa]s?|bastante|bastantes|bastantic[oa]|hart[oa]s?|hartic[oa]|abundante|abundantes|doble|grande|grandes|grandot[ea]s?|repeti|full|montones|monton|tremend[oa]|platad[oa])$/;
-const UNITS = /^(tazas?|vasos?|platos?|porcion(es)?|pocillos?|cucharadas?|cucharaditas?|latas?|botellas?|pedazos?|tajadas?|rebanadas?|gramos|g|gr|ml|mililitros|unidades|copas?|onzas?|litros?|scoops?|sobres?|paquetes?)$/;
+const UNITS = /^(tazas?|tacitas?|vasos?|vasitos?|platos?|platicos?|porcion(es)?|pocillos?|cucharadas?|cucharaditas?|cucharones?|latas?|botellas?|pedazos?|pedacitos?|tajadas?|tajaditas?|rebanadas?|rodajas?|rodajitas?|lonchas?|lonjas?|tiras?|trozos?|trocitos?|cubos?|cubitos?|gajos?|hojas?|punados?|puno|gramos|g|gr|ml|mililitros|unidades|copas?|onzas?|litros?|scoops?|sobres?|paquetes?|paqueticos?|bolsitas?|barras?)$/;
 
 /** Palabras sin contenido para detectar alimentos desconocidos. */
 const STOP = new Set(
@@ -770,6 +771,17 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
       known: sp.entry.known,
       explicitQty: !!(q || qa),
     });
+  });
+
+  // "pan con pasas tostado": lo tostado suele ser el pan (o la arepa), no lo último dicho
+  const breadLike = (k: string) => /^(pan|arepa|tostada|tostadas|galleta|almojabana|pandebono|pandeyuca|croissant|tortilla)/.test(k) || (catalogFood(k)?.tags ?? []).includes('gluten');
+  items.forEach((it, idx) => {
+    if (it.preparation !== 'tostado' || breadLike(it.key)) return;
+    const target = [...items.slice(0, idx)].reverse().find((x) => breadLike(x.key) && !x.preparation);
+    if (target) {
+      target.preparation = 'tostado';
+      it.preparation = undefined;
+    }
   });
 
   // Alimentos desconocidos: sólo si la cláusula habla de comer o ya tiene alimentos.

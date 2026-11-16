@@ -207,7 +207,7 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Limón', tags: ['fruta'], aliases: ['limon'] },
   { name: 'Mermelada', tags: ['azucar'] },
   { name: 'Miel', tags: ['azucar'] },
-  { name: 'Tostadas', tags: ['gluten', 'cereal'], aliases: ['tostada', 'pan tostado'] },
+  { name: 'Tostadas', tags: ['gluten', 'cereal'], aliases: ['tostada'] },
   { name: 'Croissant', tags: ['gluten', 'grasa', 'lacteo'], aliases: ['croasan', 'cruasan'] },
   { name: 'Tortilla', tags: ['cereal'], aliases: ['tortillas', 'wrap'] },
   { name: 'Quinua', tags: ['cereal', 'fibra_alta'], aliases: ['quinoa'] },

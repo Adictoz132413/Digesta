@@ -237,3 +237,16 @@ describe('correcciones al hablar', () => {
     expect(r.session.meals[0].items.map((i) => i.key)).toEqual(['arepa', 'queso cheddar']);
   });
 });
+
+describe('unidades y tostado (tercera captura)', () => {
+  it('«rodajas» es una unidad y «tostado» va al pan', () => {
+    const r = P('desayuné un poquitico de kiwi, pan con pasas tostado, tres huevos revueltos y dos rodajas de queso mozzarella');
+    const items = r.meals[0].items;
+    expect(items.every((i) => i.known)).toBe(true);
+    expect(items.find((i) => i.key === 'pan')?.preparation).toBe('tostado');
+    expect(items.find((i) => i.key === 'pasas')?.preparation).toBeUndefined();
+    expect(items.find((i) => i.key === 'queso mozzarella')).toMatchObject({ quantity: 'personalizada', customQuantity: '2 rodajas' });
+    expect(P('comí unas rodajas de piña').meals[0].items.map((i) => i.key)).toEqual(['pina']);
+    expect(P('almorcé un puñado de maní').meals[0].items.map((i) => i.key)).toEqual(['mani']);
+  });
+});

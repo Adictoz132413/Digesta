@@ -25,6 +25,7 @@ export type Preparation =
   | 'licuado'
   | 'procesado'
   | 'fermentado'
+  | 'tostado'
   | 'otro';
 
 /** Banderas útiles para análisis (se derivan de los alimentos y se pueden marcar a mano). */

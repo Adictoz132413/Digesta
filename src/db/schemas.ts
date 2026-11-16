@@ -13,7 +13,7 @@ export const mealItemSchema = z.object({
   key: z.string().min(1).max(120),
   quantity: z.enum(['poca', 'normal', 'abundante', 'personalizada']),
   customQuantity: z.string().max(60).optional(),
-  preparation: z.enum(['crudo', 'cocido', 'frito', 'asado', 'horneado', 'guisado', 'al_vapor', 'licuado', 'procesado', 'fermentado', 'otro']).optional(),
+  preparation: z.enum(['crudo', 'cocido', 'frito', 'asado', 'horneado', 'guisado', 'al_vapor', 'licuado', 'procesado', 'fermentado', 'tostado', 'otro']).optional(),
   ingredients: z.array(z.string().trim().min(1).max(80)).max(40).optional(),
 });
 

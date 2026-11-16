@@ -53,6 +53,7 @@ export const PREPARATIONS: { value: Preparation; label: string }[] = [
   { value: 'licuado', label: 'Licuado / jugo' },
   { value: 'procesado', label: 'Empacado / procesado' },
   { value: 'fermentado', label: 'Fermentado' },
+  { value: 'tostado', label: 'Tostado' },
   { value: 'otro', label: 'Otro' },
 ];
 export const preparationLabel = (p?: Preparation) => (p ? PREPARATIONS.find((x) => x.value === p)?.label ?? p : 'Sin especificar');
