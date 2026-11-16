@@ -19,7 +19,7 @@ import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
 import { addRefMeal, editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
 import { DraftEditor } from './DraftEditor';
-import { findSavedMeal, moveSavedFoods } from '@/voice/moveSaved';
+import { findSavedMealCandidates, moveSavedFoods } from '@/voice/moveSaved';
 import { mealTypeLabel } from '@/domain/labels';
 import {
   createRecognizer,
@@ -57,6 +57,12 @@ const EXAMPLES = [
   'Recuérdame si ayer comí salchipapa',
   'Recuérdame en 2 horas tomar la creatina',
 ];
+
+/** "la cena de las 6:16 p. m. (leche, suero)" */
+function describeMeal(meal: Meal): string {
+  const art = meal.mealType === 'bebida' ? 'la bebida' : `${meal.mealType === 'cena' || meal.mealType === 'merienda' ? 'la' : 'el'} ${mealTypeLabel(meal.mealType).toLowerCase()}`;
+  return `${art} de las ${formatTime(meal.at)} (${meal.items.map((i) => i.name.toLowerCase()).join(', ')})`;
+}
 
 const INTRO =
   'Hola. Cuéntame qué comiste, cómo te sientes o si fuiste al baño, y yo organizo la ficha. También puedes preguntarme por tu diario («¿qué cené ayer?», «¿cuándo comí leche?») o pedirme que te recuerde algo.';
@@ -254,15 +260,27 @@ export function AssistantScreen() {
           setEditorOpen(true);
           return;
         }
-        void findSavedMeal(er)
-          .then((meal) => {
+        void findSavedMealCandidates(er)
+          .then(({ meal, recent }) => {
             const what = er.mealType ? `${er.mealType === 'cena' || er.mealType === 'merienda' || er.mealType === 'bebida' ? 'la' : 'el'} ${mealTypeLabel(er.mealType).toLowerCase()}` : 'esa comida';
-            if (!meal) {
-              respond(`No encontré ${what} entre lo que guardaste en los últimos días. Puedes buscarla en Diario → Comidas y tocarla para corregirla.`, r.question);
+            if (meal) {
+              respond(`Te abrí ${describeMeal(meal)}. Corrige lo que necesites y toca «Guardar cambios».`, r.question);
+              entry.openMeal({ meal });
               return;
             }
-            respond(`Te abrí ${meal.mealType === 'bebida' ? 'la bebida' : `${meal.mealType === 'cena' || meal.mealType === 'merienda' ? 'la' : 'el'} ${mealTypeLabel(meal.mealType).toLowerCase()}`} de las ${formatTime(meal.at)} (${meal.items.map((i) => i.name.toLowerCase()).join(', ')}). Corrige lo que necesites y toca «Guardar cambios».`, r.question);
-            entry.openMeal({ meal });
+            if (!recent.length) {
+              respond(`No encontré ${what} ni otras comidas guardadas en los últimos días. Puedes buscarla en Diario → Comidas.`, r.question);
+              return;
+            }
+            // Ofrecer las últimas comidas guardadas para que elija cuál corregir
+            const choose: Question = {
+              id: `choose-${Date.now()}`,
+              kind: 'choose_meal',
+              target: '',
+              text: '',
+              chips: recent.map((m) => ({ label: `${mealTypeLabel(m.mealType)} ${formatTime(m.at)}: ${m.items.slice(0, 3).map((i) => i.name.toLowerCase()).join(', ')}${m.items.length > 3 ? '…' : ''}`, answer: { kind: 'openMeal', id: m.id } })),
+            };
+            respond(`No encontré exactamente ${er.keys.length ? 'ese alimento' : what}. ¿Cuál de tus últimas comidas guardadas quieres corregir?`, choose);
           })
           .catch((e) => respond(`No pude abrir esa comida: ${errorMessage(e)}`, r.question));
         return;
@@ -340,6 +358,18 @@ export function AssistantScreen() {
   submitRef.current = submit;
 
   const onChip = (c: Chip, from?: Question) => {
+    if (c.answer.kind === 'openMeal') {
+      const id = c.answer.id;
+      push({ role: 'user', text: c.label });
+      void getDb()
+        .meals.get(id)
+        .then((meal) => {
+          if (!meal) return respond('Esa comida ya no existe.');
+          respond(`Te abrí ${describeMeal(meal)}. Corrige lo que necesites y toca «Guardar cambios».`, sessionRef.current.pending);
+          entry.openMeal({ meal });
+        });
+      return;
+    }
     // Opción de una pregunta que ya no aplica (p. ej. se corrigió a mano el borrador)
     if (from && from.id !== sessionRef.current.pending?.id && c.answer.kind !== 'save' && c.answer.kind !== 'cancel') {
       toast('Esa pregunta ya no aplica.', { tone: 'info' });

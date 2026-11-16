@@ -61,14 +61,15 @@ export type Answer =
   | { kind: 'bristol'; value: BristolType }
   | { kind: 'hydration'; value: HydrationLevel }
   | { kind: 'save' }
-  | { kind: 'cancel' };
+  | { kind: 'cancel' }
+  | { kind: 'openMeal'; id: string };
 
 export interface Chip {
   label: string;
   answer: Answer;
 }
 
-export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'hydration' | 'reminder_time' | 'confirm';
+export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'hydration' | 'reminder_time' | 'choose_meal' | 'confirm';
 
 export interface Question {
   id: string;
@@ -99,7 +100,9 @@ export interface Reply {
   /** Cambiar la hora de alimentos ya guardados (no estaban en el borrador). */
   moveSaved?: { keys: string[]; names: string[]; at: number };
   /** Abrir una comida guardada (o del borrador) para corregirla. */
-  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number; inDraft?: boolean };
+  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number; last?: boolean; inDraft?: boolean };
+  /** Abrir una comida guardada elegida en las opciones. */
+  openMealId?: string;
 }
 
 export function emptySession(): Session {
@@ -444,6 +447,8 @@ export function interpret(q: Question, raw: string, p: ParseResult, now: number,
       const b = bristolIn(n);
       return b ? { kind: 'bristol', value: b } : undefined;
     }
+    case 'choose_meal':
+      return undefined;
     case 'reminder_time': {
       const t = parseFutureTime(n, now);
       return t ? { kind: 'time', value: t } : p.intent === 'no' || p.intent === 'skip' ? { kind: 'cancel' } : undefined;
@@ -537,6 +542,8 @@ export function applyAnswer(s: Session, q: Question, a: Answer, now: number): bo
       st.bristol = a.value;
       return true;
     }
+    case 'choose_meal':
+      return false;
     case 'reminder_time':
       return a.kind === 'time';
     case 'hydration':
@@ -862,6 +869,7 @@ export function handleChip(prev: Session, chip: Chip, now: number): Reply {
   const s = clone(prev);
   const q = s.pending;
   if (q?.kind === 'reminder_time' && s.pendingReminder) return finishReminder(s, chip.answer, now);
+  if (chip.answer.kind === 'openMeal') return { session: s, text: '', question: s.pending, openMealId: chip.answer.id };
   if (chip.answer.kind === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo.', cancelled: true };
   if (chip.answer.kind === 'save') return finishSave(s, now);
   if (q) applyAnswer(s, q, chip.answer, now);

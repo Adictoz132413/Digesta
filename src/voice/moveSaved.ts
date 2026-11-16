@@ -5,7 +5,7 @@
  */
 import { getDb } from '@/db/db';
 import { keysOfItems, saveMeal } from '@/db/repo';
-import { deriveFlags } from '@/domain/foods';
+import { catalogFood, deriveFlags, foodKey } from '@/domain/foods';
 import { suggestMealType } from '@/domain/labels';
 import type { Meal } from '@/domain/types';
 import { isBeverage } from './nlu';
@@ -26,11 +26,31 @@ export async function moveSavedFoods(ref: { keys: string[]; at: number }, now = 
   return { names: moving.map((i) => i.name), split: true };
 }
 
+/** Palabras con las que se puede haber guardado un alimento (nombre, alias del catálogo, ingredientes). */
+function wordsFor(key: string): string[] {
+  const cat = catalogFood(key);
+  const phrases = [key, ...(cat ? [foodKey(cat.name), ...(cat.aliases ?? []).map(foodKey)] : [])];
+  const stop = new Set(['de', 'con', 'la', 'el', 'en', 'y', 'del']);
+  const self = cat ? foodKey(cat.name) : key;
+  // Sin palabras que son otro alimento ("leche" no sirve para encontrar un batido)
+  const isOther = (w: string) => {
+    const c = catalogFood(w);
+    return !!c && foodKey(c.name) !== self;
+  };
+  return [...new Set(phrases.flatMap((p) => p.split(' ')).filter((w) => w.length >= 4 && !stop.has(w) && !isOther(w)))];
+}
+
 /**
- * Busca la comida guardada a la que se refiere un pedido de corrección:
- * la más reciente (72 h, o el día indicado) del tipo y con los alimentos mencionados.
+ * Busca la comida guardada a la que se refiere un pedido de corrección.
+ *  1. La más reciente del tipo y con los alimentos mencionados (72 h o el día indicado).
+ *  2. Si no, por nombres parecidos ("batido de proteína" ↔ "suero", "whey").
+ *  3. Si dijo "el último", la última comida guardada.
+ * Devuelve también las comidas recientes para ofrecerlas como opciones.
  */
-export async function findSavedMeal(req: { mealType?: Meal['mealType']; keys: string[]; dayOffset?: number }, now = Date.now()): Promise<Meal | undefined> {
+export async function findSavedMealCandidates(
+  req: { mealType?: Meal['mealType']; keys: string[]; dayOffset?: number; last?: boolean },
+  now = Date.now(),
+): Promise<{ meal?: Meal; recent: Meal[] }> {
   let from = now - 72 * 3600_000;
   let to = now + 60_000;
   if (req.dayOffset !== undefined) {
@@ -40,7 +60,20 @@ export async function findSavedMeal(req: { mealType?: Meal['mealType']; keys: st
     from = d.getTime();
     to = from + 24 * 3600_000;
   }
-  const list = await getDb().meals.where('at').between(from, to, true, false).reverse().sortBy('at');
-  const has = (m: Meal) => !req.keys.length || m.items.some((i) => req.keys.includes(i.key) || (i.ingredients ?? []).some((x) => req.keys.includes(x.toLowerCase())));
-  return list.find((m) => (!req.mealType || m.mealType === req.mealType) && has(m)) ?? (req.mealType && req.keys.length ? list.find(has) : undefined);
+  const list: Meal[] = await getDb().meals.where('at').between(from, to, true, false).reverse().sortBy('at');
+  const typeOk = (m: Meal) => !req.mealType || m.mealType === req.mealType;
+  const exact = (m: Meal) => !req.keys.length || m.items.some((i) => req.keys.includes(i.key) || (i.ingredients ?? []).some((x) => req.keys.includes(foodKey(x))));
+  const words = req.keys.flatMap(wordsFor);
+  const fuzzy = (m: Meal) => words.length > 0 && m.items.some((i) => words.some((w) => i.key.split(' ').includes(w) || (i.ingredients ?? []).some((x) => foodKey(x).split(' ').includes(w))));
+  const meal =
+    list.find((m) => typeOk(m) && exact(m)) ??
+    (req.keys.length ? list.find((m) => typeOk(m) && fuzzy(m)) ?? list.find(fuzzy) : undefined) ??
+    (req.last ? list.find(typeOk) ?? list[0] : undefined) ??
+    (!req.keys.length && req.mealType ? list.find(typeOk) : undefined);
+  return { meal, recent: list.slice(0, 4) };
+}
+
+/** Compatibilidad: sólo la comida encontrada. */
+export async function findSavedMeal(req: { mealType?: Meal['mealType']; keys: string[]; dayOffset?: number; last?: boolean }, now = Date.now()): Promise<Meal | undefined> {
+  return (await findSavedMealCandidates(req, now)).meal;
 }

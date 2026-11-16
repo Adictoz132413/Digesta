@@ -109,7 +109,7 @@ export interface ParseResult {
   /** Inicio o fin de un ayuno intermitente ("empiezo el ayuno", "rompí el ayuno"). */
   fast?: { kind: 'start' | 'end'; at: number };
   /** "Corrige la cena que me pusiste": abrir esa comida guardada para editarla. */
-  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number };
+  editRequest?: { mealType?: MealType; keys: string[]; dayOffset?: number; last?: boolean };
   /** "El batido que registraste me lo tomé a las 4": mover esos alimentos a otra hora. */
   moveRef?: { keys: string[]; names: string[]; at: number };
   /** Empezó con "perdón"/"mejor dicho": lo que sigue reemplaza el último alimento del borrador. */
@@ -978,6 +978,7 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
         mealType,
         keys: [...new Set(spans.map((s) => s.entry.key))],
         dayOffset: /\b(antier|anteayer)\b/.test(whole) ? -2 : /\b(ayer|anoche)\b/.test(whole) ? -1 : /\bhoy\b/.test(whole) ? 0 : undefined,
+        last: /\b(ultim[oa]s?|lo que acabas|recien|ahorita|acabaste)\b/.test(whole),
       };
       res.empty = false;
       return res;
