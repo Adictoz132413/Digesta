@@ -17,8 +17,9 @@ import { notificationPermission } from '@/lib/reminders';
 import { targetHoursFor } from '@/domain/fasting';
 import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
-import { editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
+import { addRefMeal, editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
 import { DraftEditor } from './DraftEditor';
+import { moveSavedFoods } from '@/voice/moveSaved';
 import {
   createRecognizer,
   installOnDevice,
@@ -243,6 +244,21 @@ export function AssistantScreen() {
       }
       if (r.reminder) {
         void createReminder(r.reminder).then((msg) => respond(`${msg}${r.question ? ` ${r.question.text}` : ''}`, r.question));
+        return;
+      }
+      if (r.moveSaved) {
+        const ref = r.moveSaved;
+        void moveSavedFoods(ref)
+          .then((res) => {
+            if (res) {
+              respond(`Listo, en tu diario pasé ${res.names.map((n) => n.toLowerCase()).join(' y ')} a las ${formatTime(ref.at)}${res.split ? ' como un registro aparte' : ''}.${r.question ? ` ${r.question.text}` : ''}`, r.question);
+            } else {
+              const rr = addRefMeal(sessionRef.current, ref, Date.now());
+              setSession(rr.session);
+              respond(rr.text, rr.question);
+            }
+          })
+          .catch((e) => respond(`No pude cambiar la hora: ${errorMessage(e)}`, r.question));
         return;
       }
       if (r.save) {

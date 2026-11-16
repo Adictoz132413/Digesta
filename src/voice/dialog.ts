@@ -96,6 +96,8 @@ export interface Reply {
   query?: QueryIntent;
   /** Recordatorio a crear. */
   reminder?: { at: number; text: string; daily: boolean };
+  /** Cambiar la hora de alimentos ya guardados (no estaban en el borrador). */
+  moveSaved?: { keys: string[]; names: string[]; at: number };
 }
 
 export function emptySession(): Session {
@@ -681,6 +683,56 @@ export interface TurnContext {
 }
 
 /** Procesa lo que la persona dijo o escribió. */
+/**
+ * Mueve alimentos del borrador a otra hora. Si eran toda la comida, cambia su
+ * hora; si no, los separa en una comida nueva. Devuelve los nombres movidos.
+ */
+export function moveInDraft(s: Session, ref: { keys: string[]; at: number }, now: number): string | undefined {
+  const names: string[] = [];
+  for (const m of [...s.meals]) {
+    const idx = m.items.map((it, i) => (ref.keys.includes(it.key) ? i : -1)).filter((i) => i >= 0);
+    if (!idx.length) continue;
+    const moving = idx.map((i) => m.items[i]);
+    names.push(...moving.map((x) => x.name.toLowerCase()));
+    if (moving.length === m.items.length) {
+      m.at = ref.at;
+      m.timeExplicit = true;
+      if (!m.mealTypeExplicit || mealTypeOf(m, now) !== suggestMealType(new Date(ref.at))) {
+        m.mealType = moving.every((x) => isBeverage(x.key)) ? 'bebida' : suggestMealType(new Date(ref.at));
+        m.mealTypeExplicit = true;
+      }
+    } else {
+      m.items = m.items.filter((_, i) => !idx.includes(i));
+      const nm: SMeal = {
+        id: nextId(s, 'm'),
+        items: moving,
+        supplements: [],
+        accepted: [...m.accepted],
+        at: ref.at,
+        timeExplicit: true,
+        mealType: moving.every((x) => isBeverage(x.key)) ? 'bebida' : suggestMealType(new Date(ref.at)),
+        mealTypeExplicit: true,
+      };
+      s.meals.push(nm);
+      s.last = { kind: 'meal', id: nm.id };
+    }
+  }
+  return names.length ? joinList([...new Set(names)]) : undefined;
+}
+
+/** Anota como comida nueva alimentos mencionados con hora (cuando no estaban registrados). */
+export function addRefMeal(prev: Session, ref: { keys: string[]; names: string[]; at: number }, now: number): Reply {
+  const s = clone(prev);
+  const items = ref.keys.map((key, i) => ({ name: ref.names[i], key, quantity: 'normal' as QuantityLevel, known: true, explicitQty: false, ingredients: catalogFood(key)?.ingredients ? [...catalogFood(key)!.ingredients!] : undefined }));
+  const m: SMeal = { id: nextId(s, 'm'), items, supplements: [], accepted: [], at: ref.at, timeExplicit: true, mealType: items.every((x) => isBeverage(x.key)) ? 'bebida' : suggestMealType(new Date(ref.at)), mealTypeExplicit: true };
+  s.meals.push(m);
+  s.last = { kind: 'meal', id: m.id };
+  s.pending = nextQuestion(s, now);
+  const q = s.pending;
+  const extra = q?.kind === 'confirm' ? ` Esto es lo que tengo: ${summaryLines(s, now).join('. ')}. ${q.text}` : q ? ` ${q.text}` : '';
+  return { session: s, text: `No lo encontré entre lo registrado, así que anoté ${joinList(ref.names.map((x) => x.toLowerCase()))} a las ${formatTime(ref.at)}.${extra}`.replace(/\.\.(?=\s|$)/g, '.'), question: q };
+}
+
 function reminderQuestion(now: number): Question {
   const at = (h: number, dayOffset: number) => {
     const d = new Date(now);
@@ -739,6 +791,17 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
 
   const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
+
+  if (p.moveRef) {
+    const moved = moveInDraft(s, p.moveRef, ctx.now);
+    if (moved) {
+      s.pending = nextQuestion(s, ctx.now);
+      const q = s.pending;
+      const extra = q?.kind === 'confirm' ? ` Esto es lo que tengo: ${summaryLines(s, ctx.now).join('. ')}. ${q.text}` : q ? ` ${q.text}` : '';
+      return { session: s, text: `Listo, pasé ${moved} a las ${formatTime(p.moveRef.at)}.${extra}`.replace(/\.\.(?=\s|$)/g, '.'), question: q };
+    }
+    return { session: s, text: '', question: s.pending, moveSaved: p.moveRef };
+  }
 
   if (p.fast) {
     // La acción de ayuno la ejecuta la pantalla; si además mencionó comida, se integra al borrador.

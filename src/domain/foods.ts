@@ -55,7 +55,7 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Bebida energizante', tags: ['cafeina', 'azucar', 'gaseosa'] },
   { name: 'Kumis', tags: ['lacteo', 'azucar'] },
   { name: 'Avena (bebida)', tags: ['lacteo', 'cereal', 'azucar'], ingredients: ['Avena', 'Leche'] },
-  { name: 'Batido de proteína', tags: ['proteina'], aliases: ['whey', 'proteina en polvo'] },
+  { name: 'Batido de proteína', tags: ['proteina'], aliases: ['whey', 'proteina en polvo', 'batido de suero', 'batido de suero de leche', 'suero de leche', 'proteina whey', 'batido de whey', 'proteina de suero', 'batido de proteina whey', 'malteada de proteina', 'shake de proteina', 'shake'] },
   { name: 'Leche', tags: ['lacteo'] },
   { name: 'Leche deslactosada', tags: ['lacteo'] },
   { name: 'Bebida de almendras', tags: [] },

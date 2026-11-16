@@ -108,6 +108,8 @@ export interface ParseResult {
   number?: number;
   /** Inicio o fin de un ayuno intermitente ("empiezo el ayuno", "rompí el ayuno"). */
   fast?: { kind: 'start' | 'end'; at: number };
+  /** "El batido que registraste me lo tomé a las 4": mover esos alimentos a otra hora. */
+  moveRef?: { keys: string[]; names: string[]; at: number };
   /** Empezó con "perdón"/"mejor dicho": lo que sigue reemplaza el último alimento del borrador. */
   replaceLast?: boolean;
   /** true si no se reconoció nada útil. */
@@ -299,9 +301,8 @@ export function parseTime(input: string, now: number, mealHint?: MealType): numb
     }
     return now - min * 60_000;
   }
-  if (/\b(ahorita|ahora|acabo de|recien|en este momento)\b/.test(s) && !/\bahora en la\b/.test(s)) {
-    if (!dayExplicit) return now;
-  }
+  // "ahorita" sólo vale si no se dijo una hora concreta ("…ahorita, me lo tomé a las 4")
+  const nowWords = /\b(ahorita|ahora|acabo de|recien|en este momento)\b/.test(s) && !/\bahora en la\b/.test(s) && !dayExplicit;
 
   // "a las 7", "a la 1 y media", "7:30 de la noche", "a las 8 pm"
   const clock = s.match(/\b(?:a las?|como a las?|sobre las?|eso de las?|las?)\s*(\d{1,2})(?::(\d{2}))?(?:\s*y\s*(media|cuarto|\d{1,2}))?(?:\s*(?:de la|en la|por la)?\s*(manana|tarde|noche|madrugada)|\s*(am|pm|a m|p m))?/);
@@ -327,6 +328,7 @@ export function parseTime(input: string, now: number, mealHint?: MealType): numb
     period = 'madrugada';
   }
 
+  if ((hour === undefined || hour > 24) && nowWords) return now;
   if (hour === undefined || hour > 24) {
     // Sólo una parte del día
     const part = /\b(esta manana|en la manana|por la manana|de manana|temprano)\b/.test(s)
@@ -546,7 +548,7 @@ interface FoodSpan {
 
 /** Palabras descriptivas que nunca son un alimento ("normal", "rico", "caliente"…). */
 const DESCRIPTIVE =
-  /^(normal|normales|rico|rica|ricos|ricas|sabros[oa]s?|delicios[oa]s?|caliente|calientes|fri[oa]s?|tibi[oa]s?|helad[oa]s?|natural|naturales|integral|light|casero|casera|fresc[oa]s?|maduro?s?|verdes?|pura|puro|sol[oa]|entero|entera|enteros|unos|unas|otro|otra|ademas|bien|super|igual|tipo|estilo|porcion|porciones|pedazo|pedazos|\w+mente)$/;
+  /^(normal|normales|rico|rica|ricos|ricas|sabros[oa]s?|delicios[oa]s?|caliente|calientes|fri[oa]s?|tibi[oa]s?|helad[oa]s?|natural|naturales|integral|light|casero|casera|fresc[oa]s?|maduro?s?|verdes?|pura|puro|sol[oa]|entero|entera|enteros|unos|unas|otro|otra|ademas|bien|super|igual|tipo|estilo|porcion|porciones|pedazo|pedazos|\w+mente|\w+(?:aste|iste|asteis|isteis|aron|ieron))$/;
 
 /**
  * Diminutivos y aumentativos colombianos: "huevitos" → huevo, "quesito" → queso,
@@ -720,6 +722,10 @@ function applyCorrections(tokens: string[], spans: FoodSpan[]): { kept: FoodSpan
 
 /** Platos que "contienen" lo que se nombra después con "de" o "con". */
 const COMPOSITE = new Set(['omelette', 'sandwich', 'wrap', 'crepe', 'ensalada', 'pizza', 'hamburguesa', 'perro caliente', 'arepa', 'tostadas', 'sopa', 'batido de proteina', 'empanada', 'tortilla'].map(foodKey));
+
+/** Se refiere a algo ya registrado ("que pusiste", "me lo tomé a las 4"). */
+const REF_MOVE =
+  /\b(pusiste|registraste|anotaste|apuntaste|guardaste|escribiste|agregaste|pusimos|registramos|anotamos)\b|\bme (lo|la|los|las) (tome|comi|bebi|desayune|almorce|cene)\b.*\b(a las?|a la|hace|como a las)\b|\b(eso|ese|esa|esos|esas) (fue|era|fueron|eran) (a las?|como a las|hace)\b/;
 
 const CORRECTION_WORDS = '(?:perdon|perdona|perdoname|corrijo|mejor dicho|o sea|digo|no mejor)';
 const CORRECTION_START = new RegExp(`^${CORRECTION_WORDS}\\b\\s*`);
@@ -945,6 +951,18 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   if (fastStart || fastEnd) {
     res.fast = { kind: fastEnd ? 'end' : 'start', at: parseTime(whole, ctx.now) ?? ctx.now };
     res.empty = false;
+  }
+
+  // Corrección de hora de algo ya dicho: "el batido que registraste … me lo tomé a las 4 de la tarde"
+  if (REF_MOVE.test(whole)) {
+    const spans = findFoods(whole.split(' ').filter(Boolean), lex);
+    const at = parseTime(whole.replace(/\bmas tarde\b/g, ' '), ctx.now);
+    if (spans.length && at !== undefined) {
+      const uniq = spans.filter((sp, i) => spans.findIndex((x) => x.entry.key === sp.entry.key) === i);
+      res.moveRef = { keys: uniq.map((s) => s.entry.key), names: uniq.map((s) => s.entry.name), at };
+      res.empty = false;
+      return res;
+    }
   }
 
   // Quitar alimentos
