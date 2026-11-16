@@ -189,3 +189,23 @@ describe('diálogo', () => {
     expect(r.question?.kind).toBe('bristol');
   });
 });
+
+describe('dictado real (palabras colombianas y diminutivos)', () => {
+  it('la frase de la captura: sin «poquitico» ni «normal» como alimentos', () => {
+    const r = parseUtterance(
+      'Desayuné yogur griego con banano, queso, pan, agua, un poquitico de kiwi, mozzarella, tres huevitos y pan pan normal con pasas tostado y también agua',
+      { now: NOW },
+    );
+    const items = r.meals[0].items;
+    expect(items.every((i) => i.known)).toBe(true);
+    expect(items.map((i) => i.key)).toEqual(['yogur griego', 'banano', 'queso', 'pan', 'agua', 'kiwi', 'queso mozzarella', 'huevo', 'pasas']);
+    expect(items.find((i) => i.key === 'kiwi')?.quantity).toBe('poca');
+    expect(items.find((i) => i.key === 'huevo')).toMatchObject({ quantity: 'personalizada', customQuantity: '3' });
+  });
+
+  it('diminutivos: quesito, arepita, tintico, juguito de mora', () => {
+    expect(P('me comí un quesito con una arepita y un tintico').meals[0].items.map((i) => i.key)).toEqual(['queso', 'arepa', 'tinto']);
+    expect(P('cené un juguito de mora bien frío').meals[0].items.map((i) => i.key)).toEqual(['jugo de mora']);
+    expect(P('almorcé un tantico de arroz').meals[0].items[0]).toMatchObject({ key: 'arroz', quantity: 'poca' });
+  });
+});

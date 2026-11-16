@@ -209,11 +209,11 @@ const SUPPLEMENTS: [RegExp, string][] = [
 ];
 
 const PREP_WORDS: [RegExp, Preparation][] = [
-  [/^(frit[oa]s?|apanad[oa]s?|freid[oa]s?)$/, 'frito'],
-  [/^(asad[oa]s?|plancha|parrilla|a la plancha)$/, 'asado'],
+  [/^(frit[oa]s?|apanad[oa]s?|freid[oa]s?|salteado?s?|salteadas?)$/, 'frito'],
+  [/^(asad[oa]s?|plancha|parrilla|a la plancha|tostad[oa]s?|dorad[oa]s?)$/, 'asado'],
   [/^(cocid[oa]s?|cocinad[oa]s?|hervid[oa]s?|sancochad[oa]s?)$/, 'cocido'],
   [/^vapor$/, 'al_vapor'],
-  [/^(hornead[oa]s?|horno)$/, 'horneado'],
+  [/^(hornead[oa]s?|horno|gratinad[oa]s?)$/, 'horneado'],
   [/^(sudad[oa]s?|guisad[oa]s?|estofad[oa]s?|salsa)$/, 'guisado'],
   [/^(crud[oa]s?)$/, 'crudo'],
   [/^(licuad[oa]s?|batid[oa]s?)$/, 'licuado'],
@@ -221,8 +221,8 @@ const PREP_WORDS: [RegExp, Preparation][] = [
   [/^(fermentad[oa]s?)$/, 'fermentado'],
 ];
 
-const SMALL = /^(poquito|poquita|poquitos|poco|poca|pocos|pequen[oa]s?|mitad|media|medio|chiquit[oa]s?|un poco)$/;
-const LARGE = /^(mucho|mucha|muchos|muchas|bastante|bastantes|harto|harta|hartos|abundante|abundantes|doble|grande|grandes|repeti|full|montones|tremendo)$/;
+const SMALL = /^(poquit[oa]s?|poquitic[oa]s?|poquitin|poquito|poco|poca|pocos|pocas|pequen[oa]s?|pequenit[oa]s?|mitad|media|medio|chiquit[oa]s?|chiquitic[oa]s?|tantic[oa]|tantit[oa]|pizca|pizquita|porcioncita|pedacit[oa]|probadita|mordisco|un poco)$/;
+const LARGE = /^(mucho|mucha|muchos|muchas|muchisim[oa]s?|bastante|bastantes|bastantic[oa]|hart[oa]s?|hartic[oa]|abundante|abundantes|doble|grande|grandes|grandot[ea]s?|repeti|full|montones|monton|tremend[oa]|platad[oa])$/;
 const UNITS = /^(tazas?|vasos?|platos?|porcion(es)?|pocillos?|cucharadas?|cucharaditas?|latas?|botellas?|pedazos?|tajadas?|rebanadas?|gramos|g|gr|ml|mililitros|unidades|copas?|onzas?|litros?|scoops?|sobres?|paquetes?)$/;
 
 /** Palabras sin contenido para detectar alimentos desconocidos. */
@@ -540,7 +540,50 @@ interface FoodSpan {
   entry: LexEntry;
 }
 
-function findFoods(tokens: string[], lex: Map<string, LexEntry>): FoodSpan[] {
+/** Palabras descriptivas que nunca son un alimento ("normal", "rico", "caliente"…). */
+const DESCRIPTIVE =
+  /^(normal|normales|rico|rica|ricos|ricas|sabros[oa]s?|delicios[oa]s?|caliente|calientes|fri[oa]s?|tibi[oa]s?|helad[oa]s?|natural|naturales|integral|light|casero|casera|fresc[oa]s?|maduro?s?|verdes?|pura|puro|sol[oa]|entero|entera|enteros|unos|unas|otro|otra|ademas|bien|super|igual|tipo|estilo|porcion|porciones|pedazo|pedazos|\w+mente)$/;
+
+/**
+ * Diminutivos y aumentativos colombianos: "huevitos" → huevo, "quesito" → queso,
+ * "tintico" → tinto, "panecito" → pan, "aguita" → agua.
+ */
+export function baseCandidates(word: string): string[] {
+  const out: string[] = [];
+  const m = word.match(/^(.+?)(ecit|ecic|cit|cic|it|ic|ot|on)(o|a)(s?)$/);
+  if (!m) return out;
+  const [, rawStem, suf, , plural] = m;
+  // Ortografía: jugo → juguito (gu), taco → taquito (qu)
+  const stems = [rawStem];
+  if (/gu$/.test(rawStem)) stems.push(rawStem.slice(0, -1));
+  if (/qu$/.test(rawStem)) stems.push(`${rawStem.slice(0, -2)}c`);
+  const forms = stems.flatMap((stem) => [`${stem}o`, `${stem}a`, `${stem}e`, stem]);
+  const stem = rawStem;
+  if (suf === 'cit' || suf === 'cic') forms.unshift(`${stem}`); // cafecito → cafe
+  for (const f of forms) {
+    out.push(f);
+    if (plural) out.push(`${f}s`, `${f}es`);
+  }
+  return [...new Set(out)];
+}
+
+const firstWords = new WeakMap<Map<string, LexEntry>, Set<string>>();
+
+/** Reemplaza diminutivos por su forma base cuando ésta inicia algún alimento ("juguito de mora" → "jugo de mora"). */
+function undiminish(tokens: string[], lex: Map<string, LexEntry>): string[] {
+  let fw = firstWords.get(lex);
+  if (!fw) {
+    fw = new Set([...lex.keys()].map((k) => k.split(' ')[0]));
+    firstWords.set(lex, fw);
+  }
+  return tokens.map((t) => {
+    const base = baseCandidates(t).find((c) => fw!.has(c) && !AMBIGUOUS_FOODS[c]);
+    return base ?? t;
+  });
+}
+
+function findFoods(rawTokens: string[], lex: Map<string, LexEntry>): FoodSpan[] {
+  const tokens = undiminish(rawTokens, lex);
   const spans: FoodSpan[] = [];
   let i = 0;
   while (i < tokens.length) {
@@ -555,6 +598,16 @@ function findFoods(tokens: string[], lex: Map<string, LexEntry>): FoodSpan[] {
       }
       found = { start: i, end: i + L, entry: e };
       break;
+    }
+    if (!found) {
+      // Diminutivos: "huevitos", "quesito", "arepita con quesito"
+      for (const c of baseCandidates(tokens[i])) {
+        const e = lex.get(c);
+        if (e && !AMBIGUOUS_FOODS[c]) {
+          found = { start: i, end: i + 1, entry: e };
+          break;
+        }
+      }
     }
     if (found) {
       spans.push(found);
@@ -619,7 +672,8 @@ function prepAfter(tokens: string[], end: number, maxIdx: number): { prep: Prepa
 function quantityAfter(tokens: string[], end: number, maxIdx: number): { quantity: QuantityLevel; idx: number } | undefined {
   for (let j = end; j < Math.min(maxIdx, end + 2); j++) {
     if (LARGE.test(tokens[j])) return { quantity: 'abundante', idx: j };
-    if (/^(poquito|poquita|poquitos)$/.test(tokens[j])) return { quantity: 'poca', idx: j };
+    if (SMALL.test(tokens[j]) && !/^(media|medio|mitad)$/.test(tokens[j])) return { quantity: 'poca', idx: j };
+    if (/^(normal|normales)$/.test(tokens[j])) return { quantity: 'normal', idx: j };
   }
   return undefined;
 }
@@ -684,6 +738,7 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
         SMALL.test(w) ||
         LARGE.test(w) ||
         PREP_WORDS.some(([re]) => re.test(w)) ||
+        DESCRIPTIVE.test(w) ||
         w.length <= 2 ||
         /^(desayun|almorz|almorc|cen|merend|com|tom|beb)\w*$/.test(w);
       if (isNoise) flush();
