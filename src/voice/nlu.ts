@@ -718,6 +718,9 @@ function applyCorrections(tokens: string[], spans: FoodSpan[]): { kept: FoodSpan
   return { kept: out, removed: spans.filter((s) => !out.includes(s)) };
 }
 
+/** Platos que "contienen" lo que se nombra después con "de" o "con". */
+const COMPOSITE = new Set(['omelette', 'sandwich', 'wrap', 'crepe', 'ensalada', 'pizza', 'hamburguesa', 'perro caliente', 'arepa', 'tostadas', 'sopa', 'batido de proteina', 'empanada', 'tortilla'].map(foodKey));
+
 const CORRECTION_WORDS = '(?:perdon|perdona|perdoname|corrijo|mejor dicho|o sea|digo|no mejor)';
 const CORRECTION_START = new RegExp(`^${CORRECTION_WORDS}\\b\\s*`);
 const CORRECTION_END = new RegExp(`\\s*\\b${CORRECTION_WORDS}$`);
@@ -745,9 +748,28 @@ const EATING = /\b(comi|comimos|me comi|desayune|almorce|cene|merende|tome|me to
 
 function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: DraftItem[]; unknownAllowed: boolean } {
   const tokens = clause.split(' ').filter(Boolean);
-  const { kept: spans, removed } = applyCorrections(tokens, findFoods(tokens, lex));
+  const { kept: allSpans, removed } = applyCorrections(tokens, findFoods(tokens, lex));
   const consumed = new Set<number>();
   for (const r of removed) for (let k = r.start; k < r.end; k++) consumed.add(k);
+  // Platos compuestos: "omelette de 3 huevos con queso" → los huevos y el queso son ingredientes del omelette
+  const ingredientsOf = new Map<FoodSpan, FoodSpan[]>();
+  const childSpans = new Set<FoodSpan>();
+  for (let i = 0; i < allSpans.length; i++) {
+    const parent = allSpans[i];
+    if (!COMPOSITE.has(parent.entry.key)) continue;
+    let prevEnd = parent.end;
+    for (let j = i + 1; j < allSpans.length; j++) {
+      const between = tokens.slice(prevEnd, allSpans[j].start);
+      const linked = between.length > 0 && between.length <= 4 && /^(de|con)$/.test(between[0]) || (between.length >= 1 && between.length <= 3 && between[0] === 'y' && ingredientsOf.has(parent));
+      const onlyFiller = between.every((w) => /^(de|con|y|el|la|los|las|\d+)$/.test(w) || SMALL.test(w) || LARGE.test(w));
+      if (!linked || !onlyFiller || isBeverage(allSpans[j].entry.key) || COMPOSITE.has(allSpans[j].entry.key)) break;
+      ingredientsOf.set(parent, [...(ingredientsOf.get(parent) ?? []), allSpans[j]]);
+      childSpans.add(allSpans[j]);
+      prevEnd = allSpans[j].end;
+    }
+  }
+  for (const c of childSpans) for (let k = c.start; k < c.end; k++) consumed.add(k);
+  const spans = allSpans.filter((s) => !childSpans.has(s));
   const items: DraftItem[] = [];
   spans.forEach((sp, idx) => {
     for (let k = sp.start; k < sp.end; k++) consumed.add(k);
@@ -767,7 +789,11 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
       quantity: q?.quantity ?? qa?.quantity ?? 'normal',
       customQuantity: q?.custom,
       preparation: p?.prep,
-      ingredients: sp.entry.ingredients ? [...sp.entry.ingredients] : undefined,
+      ingredients: ingredientsOf.has(sp)
+        ? [...new Set([...(sp.entry.ingredients ?? []), ...ingredientsOf.get(sp)!.map((c) => c.entry.name)])]
+        : sp.entry.ingredients
+          ? [...sp.entry.ingredients]
+          : undefined,
       known: sp.entry.known,
       explicitQty: !!(q || qa),
     });

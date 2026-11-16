@@ -5,7 +5,7 @@
  */
 import * as Dialog from '@radix-ui/react-dialog';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Check, Keyboard, Mic, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, Keyboard, Mic, Pencil, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDb } from '@/db/db';
 import { foodHistory, getDailyLog, getSettings, loadAll, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
@@ -17,7 +17,8 @@ import { notificationPermission } from '@/lib/reminders';
 import { targetHoursFor } from '@/domain/fasting';
 import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
-import { emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
+import { editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
+import { DraftEditor } from './DraftEditor';
 import {
   createRecognizer,
   installOnDevice,
@@ -71,6 +72,7 @@ export function AssistantScreen() {
   const deviceChecked = useRef(false);
   const [consentOpen, setConsentOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const recRef = useRef<Recognizer>(undefined);
   const lastWasVoice = useRef(false);
   const seq = useRef(1);
@@ -300,7 +302,12 @@ export function AssistantScreen() {
   const submitRef = useRef(submit);
   submitRef.current = submit;
 
-  const onChip = (c: Chip) => {
+  const onChip = (c: Chip, from?: Question) => {
+    // Opción de una pregunta que ya no aplica (p. ej. se corrigió a mano el borrador)
+    if (from && from.id !== sessionRef.current.pending?.id && c.answer.kind !== 'save' && c.answer.kind !== 'cancel') {
+      toast('Esa pregunta ya no aplica.', { tone: 'info' });
+      return;
+    }
     lastWasVoice.current = false;
     stopSpeaking();
     push({ role: 'user', text: c.label });
@@ -324,6 +331,16 @@ export function AssistantScreen() {
   };
 
   const lastBot = [...msgs].reverse().find((m) => m.role === 'bot');
+
+  /** Al cerrar el editor: si cambió la pregunta pendiente, el asistente sigue con la nueva. */
+  const closeEditor = () => {
+    setEditorOpen(false);
+    const pending = sessionRef.current.pending;
+    if (pending?.id !== lastBot?.question?.id) {
+      if (pending) push({ role: 'bot', text: pending.kind === 'confirm' ? `Corregido. ${summaryLines(sessionRef.current, Date.now()).join('. ')}. ${pending.text}` : `Corregido. ${pending.text}`, question: pending });
+      else if (!isEmpty(sessionRef.current)) push({ role: 'bot', text: 'Corregido.' });
+    }
+  };
   const draft = !isEmpty(session) ? summaryLines(session, Date.now()) : [];
 
   return (
@@ -357,7 +374,7 @@ export function AssistantScreen() {
                     <button
                       key={c.label}
                       type="button"
-                      onClick={() => onChip(c)}
+                      onClick={() => onChip(c, m.question)}
                       disabled={saving}
                       className={cx(
                         'min-h-10 rounded-full border px-3.5 text-sm font-semibold transition active:scale-95',
@@ -434,14 +451,21 @@ export function AssistantScreen() {
               <X size={14} /> Descartar
             </button>
           </div>
-          <ul className="mt-1 space-y-0.5 text-sm">
-            {draft.map((l) => (
-              <li key={l}>• {l}</li>
-            ))}
-          </ul>
-          <Button size="sm" className="mt-2" block disabled={saving} onClick={() => onChip({ label: 'Guardar', answer: { kind: 'save' } })}>
-            {saving ? 'Guardando…' : 'Guardar ahora'}
-          </Button>
+          <button type="button" onClick={() => setEditorOpen(true)} className="mt-1 w-full text-left" aria-label="Corregir la ficha en borrador">
+            <ul className="space-y-0.5 text-sm">
+              {draft.map((l) => (
+                <li key={l}>• {l}</li>
+              ))}
+            </ul>
+          </button>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="secondary" disabled={saving} onClick={() => setEditorOpen(true)}>
+              <Pencil size={15} /> Corregir
+            </Button>
+            <Button size="sm" block disabled={saving} onClick={() => onChip({ label: 'Guardar', answer: { kind: 'save' } })}>
+              {saving ? 'Guardando…' : 'Guardar ahora'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -490,6 +514,18 @@ export function AssistantScreen() {
           Conversación continua: escuchar de nuevo después de cada pregunta
         </label>
       )}
+
+      <DraftEditor
+        open={editorOpen}
+        session={session}
+        saving={saving}
+        onEdit={(e) => setSession((prev) => editDraft(prev, e, Date.now()))}
+        onClose={closeEditor}
+        onSave={() => {
+          setEditorOpen(false);
+          onChip({ label: 'Guardar', answer: { kind: 'save' } });
+        }}
+      />
 
       <ConsentDialog
         open={consentOpen}

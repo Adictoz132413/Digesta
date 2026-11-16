@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalize, parseTime, parseUtterance } from '@/voice/nlu';
-import { emptySession, handleChip, handleUtterance, toRecords, type Reply, type Session } from '@/voice/dialog';
+import { editDraft, emptySession, handleChip, handleUtterance, toRecords, type Reply, type Session } from '@/voice/dialog';
 
 // Sábado 15 de nov de 2026, 3:00 p. m. (hora local)
 const NOW = new Date(2026, 10, 15, 15, 0).getTime();
@@ -227,14 +227,17 @@ describe('correcciones al hablar', () => {
     expect(r.removals).toEqual(['pan']);
     expect(r.meals[0].items.map((i) => i.key)).toEqual(['arepa']);
   });
-  it('elige la lectura sin palabras sueltas: arepa + queso campesino', () => {
-    expect(keys('desayuné arepa con queso campesino')).toEqual(['arepa', 'queso campesino']);
+  it('elige la lectura sin palabras sueltas: arepa con queso campesino', () => {
+    const arepa = P('desayuné arepa con queso campesino').meals[0].items;
+    expect(arepa.map((i) => i.key)).toEqual(['arepa']);
+    expect(arepa[0].ingredients).toEqual(['Queso campesino']);
     expect(keys('almorcé arroz con pollo')).toEqual(['arroz con pollo']);
   });
   it('corrección en un mensaje aparte reemplaza lo último del borrador', () => {
     let r = handleUtterance(emptySession(), 'desayuné arepa con queso campesino', { now: NOW });
     r = handleUtterance(r.session, 'perdón, era queso cheddar', { now: NOW });
-    expect(r.session.meals[0].items.map((i) => i.key)).toEqual(['arepa', 'queso cheddar']);
+    expect(r.session.meals[0].items.map((i) => i.key)).toEqual(['arepa']);
+    expect(r.session.meals[0].items[0].ingredients).toEqual(['Queso cheddar']);
   });
 });
 
@@ -248,5 +251,41 @@ describe('unidades y tostado (tercera captura)', () => {
     expect(items.find((i) => i.key === 'queso mozzarella')).toMatchObject({ quantity: 'personalizada', customQuantity: '2 rodajas' });
     expect(P('comí unas rodajas de piña').meals[0].items.map((i) => i.key)).toEqual(['pina']);
     expect(P('almorcé un puñado de maní').meals[0].items.map((i) => i.key)).toEqual(['mani']);
+  });
+});
+
+describe('platos compuestos y corrección manual del borrador (cuarta captura)', () => {
+  it('«omelette de tres huevos con queso mozzarella»: los huevos y el queso son ingredientes', () => {
+    const items = P('desayuné un omelette de tres huevos con queso mozzarella, pan tostado normal y agua').meals[0].items;
+    expect(items.map((i) => i.key)).toEqual(['omelette', 'pan', 'agua']);
+    expect(items[0].ingredients).toEqual(['Huevo', 'Queso mozzarella']);
+    expect(items[1].preparation).toBe('tostado');
+    expect(P('almorcé un sándwich de jamón y queso y una gaseosa').meals[0].items.map((i) => i.key)).toEqual(['sandwich', 'gaseosa']);
+  });
+
+  it('«el omelette sin los huevos» quita los huevos sueltos', () => {
+    let r = handleUtterance(emptySession(), 'desayuné un omelette, tres huevos y pan', { now: NOW });
+    r = handleUtterance(r.session, 'el omelette sin los huevos', { now: NOW });
+    expect(r.session.meals[0].items.map((i) => i.key)).toEqual(['omelette', 'pan']);
+  });
+
+  it('editar a mano: renombrar un desconocido, cantidades, ingredientes, agregar y hora', () => {
+    let r = handleUtterance(emptySession(), 'me comí un tinto y un zorbilón', { now: NOW });
+    expect(r.session.pending?.kind).toBe('unknown_food');
+    const m = r.session.meals[0];
+    let s = editDraft(r.session, { kind: 'item', mealId: m.id, index: 1, patch: { name: 'salchichón' } }, NOW);
+    expect(s.meals[0].items[1]).toMatchObject({ key: 'salchichon', known: true });
+    expect(s.pending?.kind).not.toBe('unknown_food');
+    s = editDraft(s, { kind: 'item', mealId: m.id, index: 0, patch: { quantity: 'abundante' } }, NOW);
+    expect(s.meals[0].items[0].quantity).toBe('abundante');
+    s = editDraft(s, { kind: 'addItem', mealId: m.id, name: 'arepa con queso' }, NOW);
+    expect(s.meals[0].items[2].ingredients).toEqual(['Arepa', 'Queso campesino']);
+    s = editDraft(s, { kind: 'removeIngredient', mealId: m.id, index: 2, ingredient: 'Arepa' }, NOW);
+    expect(s.meals[0].items[2].ingredients).toEqual(['Queso campesino']);
+    s = editDraft(s, { kind: 'meal', mealId: m.id, patch: { mealType: 'merienda', at: NOW - 3600_000 } }, NOW);
+    const rec = toRecords(s, NOW);
+    expect(rec.meals[0]).toMatchObject({ mealType: 'merienda', at: NOW - 3600_000 });
+    s = editDraft(s, { kind: 'removeItem', mealId: m.id, index: 0 }, NOW);
+    expect(s.meals[0].items.map((i) => i.key)).toEqual(['salchichon', 'arepa con queso']);
   });
 });

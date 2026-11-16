@@ -7,8 +7,8 @@
  */
 import { formatTime, HOUR } from '@/domain/dates';
 import { FEELINGS, bristolInfo, mealTypeLabel, preparationLabel, quantityLabel, suggestMealType, symptomLabel } from '@/domain/labels';
-import { deriveFlags, foodKey } from '@/domain/foods';
-import type { BristolType, DigestionRating, FeelingAfter, HydrationLevel, MealType, QuantityLevel } from '@/domain/types';
+import { catalogFood, deriveFlags, foodKey, prettyName } from '@/domain/foods';
+import type { BristolType, DigestionRating, FeelingAfter, HydrationLevel, MealType, Preparation, QuantityLevel } from '@/domain/types';
 import { HYDRATION_LEVELS, formatMl, glassesToMl, hydrationLabel } from '@/domain/hydration';
 import type { MealInput, StoolInput, SymptomInput } from '@/db/repo';
 import { detectQuery, detectReminder, parseFutureTime, type QueryIntent } from './query';
@@ -562,8 +562,19 @@ export function merge(s: Session, p: ParseResult, now: number, raw?: string): st
   }
   if (p.replaceLast && p.meals.length) {
     const target = s.meals[s.meals.length - 1];
-    const gone = target?.items.pop();
-    if (gone) notes.push(`Cambié ${gone.name.toLowerCase()}.`);
+    const lastItem = target?.items[target.items.length - 1];
+    const incoming = p.meals[0].items[0];
+    const head = (x: string) => foodKey(x).split(' ')[0];
+    const ing = lastItem?.ingredients?.[lastItem.ingredients.length - 1];
+    if (lastItem && ing && incoming && head(ing) === head(incoming.name) && head(lastItem.name) !== head(incoming.name)) {
+      // "arepa con queso campesino" + "perdón, era queso cheddar" → cambia el queso de la arepa
+      lastItem.ingredients = [...lastItem.ingredients!.slice(0, -1), incoming.name];
+      p = { ...p, meals: [{ ...p.meals[0], items: p.meals[0].items.slice(1) }, ...p.meals.slice(1)].filter((m) => m.items.length || m.supplements.length) };
+      notes.push(`Cambié ${ing.toLowerCase()} por ${incoming.name.toLowerCase()} en ${lastItem.name.toLowerCase()}.`);
+    } else {
+      const gone = target?.items.pop();
+      if (gone) notes.push(`Cambié ${gone.name.toLowerCase()}.`);
+    }
   }
   for (const dm of p.meals) {
     const last = s.meals[s.meals.length - 1];
@@ -853,4 +864,109 @@ export function toRecords(s: Session, now: number): Records {
     notes: 'Registrado por voz',
   }));
   return { meals, symptoms, stools, water: s.water, hydration: s.hydration, digestion: s.digestion };
+}
+
+// ───────────────────────── Edición manual del borrador ─────────────────────────
+
+export type DraftEdit =
+  | { kind: 'item'; mealId: string; index: number; patch: { name?: string; quantity?: QuantityLevel; customQuantity?: string; preparation?: Preparation | null } }
+  | { kind: 'removeItem'; mealId: string; index: number }
+  | { kind: 'removeIngredient'; mealId: string; index: number; ingredient: string }
+  | { kind: 'addItem'; mealId: string; name: string }
+  | { kind: 'meal'; mealId: string; patch: { mealType?: MealType; at?: number } }
+  | { kind: 'removeMeal'; mealId: string }
+  | { kind: 'symptom'; id: string; intensity: number }
+  | { kind: 'removeSymptom'; id: string }
+  | { kind: 'stool'; id: string; bristol: BristolType }
+  | { kind: 'removeStool'; id: string }
+  | { kind: 'water'; value: number; hydration?: HydrationLevel | null };
+
+/** Aplica una corrección hecha a mano en la ficha en borrador. Devuelve una sesión nueva. */
+export function editDraft(prev: Session, e: DraftEdit, now: number): Session {
+  const s = clone(prev);
+  const meal = 'mealId' in e ? s.meals.find((m) => m.id === e.mealId) : undefined;
+  switch (e.kind) {
+    case 'item': {
+      const it = meal?.items[e.index];
+      if (!it || !meal) break;
+      if (e.patch.name !== undefined && e.patch.name.trim()) {
+        const name = prettyName(e.patch.name);
+        const key = foodKey(name);
+        const cat = catalogFood(key);
+        it.name = cat?.name ?? name;
+        it.key = cat ? foodKey(cat.name) : key;
+        it.known = true;
+        if (!meal.accepted.includes(it.key)) meal.accepted.push(it.key);
+        if (cat?.ingredients && !it.ingredients?.length) it.ingredients = [...cat.ingredients];
+      }
+      if (e.patch.quantity) {
+        it.quantity = e.patch.quantity;
+        it.explicitQty = true;
+        if (e.patch.quantity !== 'personalizada') it.customQuantity = undefined;
+      }
+      if (e.patch.customQuantity !== undefined) it.customQuantity = e.patch.customQuantity.trim() || undefined;
+      if (e.patch.preparation !== undefined) it.preparation = e.patch.preparation ?? undefined;
+      break;
+    }
+    case 'removeItem':
+      if (meal) {
+        meal.items.splice(e.index, 1);
+        if (!meal.items.length && !meal.supplements.length) s.meals = s.meals.filter((m) => m !== meal);
+      }
+      break;
+    case 'removeIngredient': {
+      const it = meal?.items[e.index];
+      if (it?.ingredients) it.ingredients = it.ingredients.filter((x) => x !== e.ingredient);
+      break;
+    }
+    case 'addItem': {
+      const name = prettyName(e.name);
+      if (!meal || !name) break;
+      const key = foodKey(name);
+      const cat = catalogFood(key);
+      const k = cat ? foodKey(cat.name) : key;
+      if (!meal.items.some((i) => i.key === k)) {
+        meal.items.push({ name: cat?.name ?? name, key: k, quantity: 'normal', known: true, explicitQty: false, ingredients: cat?.ingredients ? [...cat.ingredients] : undefined });
+        meal.accepted.push(k);
+      }
+      break;
+    }
+    case 'meal':
+      if (!meal) break;
+      if (e.patch.mealType) {
+        meal.mealType = e.patch.mealType;
+        meal.mealTypeExplicit = true;
+      }
+      if (e.patch.at !== undefined) {
+        meal.at = e.patch.at;
+        meal.timeExplicit = true;
+      }
+      break;
+    case 'removeMeal':
+      s.meals = s.meals.filter((m) => m.id !== e.mealId);
+      break;
+    case 'symptom': {
+      const x = s.symptoms.find((y) => y.id === e.id);
+      if (x) x.intensity = Math.max(0, Math.min(10, Math.round(e.intensity)));
+      break;
+    }
+    case 'removeSymptom':
+      s.symptoms = s.symptoms.filter((y) => y.id !== e.id);
+      break;
+    case 'stool': {
+      const x = s.stools.find((y) => y.id === e.id);
+      if (x) x.bristol = e.bristol;
+      break;
+    }
+    case 'removeStool':
+      s.stools = s.stools.filter((y) => y.id !== e.id);
+      break;
+    case 'water':
+      s.water = Math.max(0, e.value);
+      if (e.hydration !== undefined) s.hydration = e.hydration ?? undefined;
+      break;
+  }
+  // La pregunta pendiente puede haber dejado de aplicar (p. ej. se corrigió el alimento desconocido)
+  if (s.pending?.kind !== 'reminder_time') s.pending = nextQuestion(s, now);
+  return s;
 }
