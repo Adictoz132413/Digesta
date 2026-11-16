@@ -80,6 +80,16 @@ Toca **Contar por voz** (en Hoy) o el micrófono flotante y habla con naturalida
 
 El asistente organiza la ficha (tipo de comida, hora, alimentos, cantidades, preparación, ingredientes, sensación, síntomas con intensidad, ubicación y duración, deposición con Bristol, sangre, color, urgencia y dolor) y **sólo pregunta lo que falta**: la hora si no coincide, el tamaño de las porciones, cómo te sentiste, la intensidad de un síntoma, el tipo de Bristol o si un alimento que no conoce es realmente un alimento. Puedes responder hablando o tocando las opciones, corregir sobre la marcha y guardar cuando quieras. Lee sus respuestas en voz alta y, en modo *conversación continua*, vuelve a escuchar solo.
 
+**Preguntas sobre tu diario.** El asistente distingue cuando preguntas en vez de registrar y te responde con tus datos:
+
+> «Recuérdame si ayer comí salchipapa» → «Sí. Ayer comiste salchipapa en la cena a las 7:00 p. m. Después registraste acidez 6/10…»
+> «¿Qué cené el sábado?» · «¿Cuándo fue la última vez que comí leche?» · «¿Cuántas veces comí fríjoles esta semana?»
+> «¿Qué síntomas tuve ayer?» · «¿Cuántas veces fui al baño hoy?» · «¿Cómo estuvo mi digestión la semana pasada?» · «¿Cuánta agua tomé ayer?»
+
+Entiende hoy, ayer, antier, días de la semana («el jueves»), fechas («el 3 de noviembre»), «esta semana», «la semana pasada», «este mes» y «los últimos N días», y busca también los alimentos que fueron ingredientes de una preparación.
+
+**Recordatorios.** «Recuérdame en 2 horas tomar la creatina», «avísame a las 9 de la noche que tome agua», «recuérdame mañana a las 8 registrar el desayuno», «recuérdame todos los días a las 7 de la mañana tomar el omeprazol». Si no dices la hora, te pregunta cuándo. Los ves y borras en *Ajustes → Recordatorios del asistente*. Como toda app web, sólo puede avisar mientras la app está abierta o en segundo plano; si estaba cerrada, te muestra el aviso al abrirla.
+
 **Privacidad de la voz.** La interpretación (`src/voice/nlu.ts` y `src/voice/dialog.ts`) se hace con reglas y diccionarios en el teléfono: ningún texto se envía a un servicio de IA. La conversión de **voz a texto** la hace Chrome: si el teléfono permite reconocimiento en el dispositivo, se usa; si no, Chrome puede enviar el audio a Google, y la app lo explica y pide permiso antes del primer uso. Alternativa 100 % local: el micrófono del teclado (Gboard) con dictado sin conexión, escribiendo en el campo del asistente.
 
 ### Hidratación a tu manera

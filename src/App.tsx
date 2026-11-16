@@ -24,6 +24,7 @@ import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { AssistantScreen } from '@/features/assistant/AssistantScreen';
 import { FastingScreen } from '@/features/fasting/FastingScreen';
 import { useFastingNotifier } from '@/lib/fastingNotifier';
+import { useCustomReminderScheduler } from '@/lib/customReminderScheduler';
 import { Onboarding } from '@/features/settings/Onboarding';
 import { ReminderBanner } from '@/features/settings/ReminderBanner';
 
@@ -55,6 +56,7 @@ function Shell() {
 
   useReminderScheduler();
   useFastingNotifier();
+  useCustomReminderScheduler();
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
   useEffect(() => {

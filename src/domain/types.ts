@@ -269,6 +269,17 @@ export interface Reminder {
   lastFired?: string;
 }
 
+/** Recordatorio pedido al asistente ("recuérdame en 2 horas tomar la creatina"). */
+export interface CustomReminder {
+  id: ID;
+  /** Próximo aviso (ms). */
+  nextAt: number;
+  text: string;
+  /** Se repite todos los días a la misma hora. */
+  daily: boolean;
+  createdAt: number;
+}
+
 export interface Settings {
   theme: ThemePref;
   /** Meta diaria de agua en vasos de 250 ml (8 ≈ 2 litros). */
@@ -290,6 +301,8 @@ export interface Settings {
   fastingProtocol: FastProtocol;
   /** Horas objetivo si el protocolo es personalizado. */
   fastingCustomHours: number;
+  /** Recordatorios creados por voz o texto en el asistente. */
+  customReminders: CustomReminder[];
 }
 
 export interface SettingRow {
@@ -310,4 +323,5 @@ export const DEFAULT_SETTINGS: Settings = {
   fastingAck: false,
   fastingProtocol: '14:10',
   fastingCustomHours: 13,
+  customReminders: [],
 };

@@ -965,3 +965,16 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
   return res;
 }
 
+
+/** Alimentos mencionados en un texto (catálogo, historial y propios). Usado por las consultas. */
+export function matchFoods(text: string, extraFoods: { name: string; key: string }[] = []): { name: string; key: string }[] {
+  const sig = extraFoods.map((e) => e.key).join('|');
+  if (!cachedLex || cachedLex.sig !== sig) cachedLex = { sig, lex: buildLexicon(extraFoods) };
+  return findFoods(normalize(text).split(' ').filter(Boolean), cachedLex.lex).map((s) => ({ name: s.entry.name, key: s.entry.key }));
+}
+
+/** Tipos de síntoma mencionados en un texto. */
+export function matchSymptomTypes(text: string): SymptomType[] {
+  const n = normalize(text);
+  return SYMPTOM_LEX.filter(([re]) => re.test(n)).map(([, t]) => t);
+}

@@ -22,6 +22,7 @@ import { navigate } from '@/lib/router';
 import { Button, Card, IconButton, SectionTitle, Segmented, Stepper, Switch, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
 import { CsvExport } from '@/features/reports/CsvExport';
 import { VoiceSection } from './VoiceSection';
+import { CustomRemindersList } from './CustomRemindersList';
 
 const VERSION = '1.0.0';
 
@@ -102,6 +103,7 @@ export function SettingsScreen() {
       </Card>
 
       <RemindersSection settings={settings} />
+      <CustomRemindersList reminders={settings.customReminders} />
       <BackupSection />
 
       <SectionTitle>Exportar registros (CSV)</SectionTitle>

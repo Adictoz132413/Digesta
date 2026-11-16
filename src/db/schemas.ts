@@ -171,6 +171,17 @@ export const settingsSchema = z.object({
   fastingAck: z.boolean(),
   fastingProtocol: fastProtocol,
   fastingCustomHours: z.number().int().min(8).max(24),
+  customReminders: z
+    .array(
+      z.object({
+        id,
+        nextAt: ms,
+        text: z.string().trim().min(1, 'Escribe qué te recuerdo').max(200),
+        daily: z.boolean(),
+        createdAt: ms,
+      }),
+    )
+    .max(50, 'Máximo 50 recordatorios'),
 });
 
 /** Foto dentro del respaldo JSON: el Blob viaja como data URL base64. */

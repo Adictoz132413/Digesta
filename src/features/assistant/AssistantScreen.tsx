@@ -8,9 +8,12 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Keyboard, Mic, MicOff, Send, ShieldCheck, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getDb } from '@/db/db';
-import { foodHistory, getDailyLog, getSettings, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
+import { foodHistory, getDailyLog, getSettings, loadAll, patchDailyLog, saveMeal, saveStool, saveSymptom } from '@/db/repo';
 import { dayKey, formatDuration, formatTime } from '@/domain/dates';
 import { endFast, maybeEndFastWithMeal, openFast, startFast } from '@/db/fasting';
+import { addCustomReminder } from '@/db/customReminders';
+import { answerQuery, dayPhrase, type QueryIntent } from '@/voice/query';
+import { notificationPermission } from '@/lib/reminders';
 import { targetHoursFor } from '@/domain/fasting';
 import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
@@ -48,12 +51,12 @@ interface Msg {
 const EXAMPLES = [
   'Almorcé arroz, fríjoles bastantes y carne asada',
   'Hace una hora me dio agrieras fuerte',
-  'Fui al baño y salió normal',
-  'Desayuné 2 arepas con queso y un tinto',
+  'Recuérdame si ayer comí salchipapa',
+  'Recuérdame en 2 horas tomar la creatina',
 ];
 
 const INTRO =
-  'Hola. Cuéntame qué comiste o bebiste, cómo te sientes o si fuiste al baño, con tus palabras. Yo organizo la ficha y te pregunto lo que falte.';
+  'Hola. Cuéntame qué comiste, cómo te sientes o si fuiste al baño, y yo organizo la ficha. También puedes preguntarme por tu diario («¿qué cené ayer?», «¿cuándo comí leche?») o pedirme que te recuerde algo.';
 
 export function AssistantScreen() {
   const toast = useToast();
@@ -150,7 +153,9 @@ export function AssistantScreen() {
 
   /** Responde en pantalla (y en voz alta) y, si corresponde, vuelve a escuchar. */
   const respond = useCallback(
-    (text: string, question?: Question, extra?: Partial<Msg>) => {
+    (raw: string, question?: Question, extra?: Partial<Msg>) => {
+      // "p. m." ya termina en punto: evitar "p. m.."
+      const text = raw.replace(/\.\.(?=\s|$)/g, '.');
       push({ role: 'bot', text, question, ...extra });
       const p = readVoicePrefs();
       const relisten = () => {
@@ -223,6 +228,15 @@ export function AssistantScreen() {
         void runFast(r.fast).then((msg) => respond(`${msg}${r.text ? ` ${r.text}` : ''}`, r.question));
         return;
       }
+      if (r.query) {
+        const pendingText = r.question ? ` Volviendo a lo anterior: ${r.question.text}` : '';
+        void answerFromDiary(r.query).then((msg) => respond(`${msg}${pendingText}`, r.question));
+        return;
+      }
+      if (r.reminder) {
+        void createReminder(r.reminder).then((msg) => respond(`${msg}${r.question ? ` ${r.question.text}` : ''}`, r.question));
+        return;
+      }
       if (r.save) {
         void save(r.session);
         return;
@@ -231,6 +245,32 @@ export function AssistantScreen() {
     },
     [respond, save],
   );
+  /** Responde una pregunta con los datos del diario (todo en el teléfono). */
+  async function answerFromDiary(q: QueryIntent): Promise<string> {
+    try {
+      const [all, fasts] = await Promise.all([loadAll(), getDb().fasts.toArray()]);
+      const draftNote = !isEmpty(sessionRef.current) ? ' Ojo: lo que me contaste hace un momento sigue en el borrador y aún no está guardado.' : '';
+      return answerQuery(q, { ...all, fasts }, Date.now()) + draftNote;
+    } catch (e) {
+      return `No pude consultar tu diario: ${errorMessage(e)}`;
+    }
+  }
+
+  /** Programa un recordatorio pedido por voz o texto. */
+  async function createReminder(r: { at: number; text: string; daily: boolean }): Promise<string> {
+    try {
+      await addCustomReminder(r);
+      const when = r.daily ? `todos los días a las ${formatTime(r.at)}` : `${dayPhrase(r.at, Date.now())} a las ${formatTime(r.at)}`;
+      const how =
+        notificationPermission() === 'granted'
+          ? 'Te llegará una notificación si la app está abierta o en segundo plano.'
+          : 'Para recibirlo como notificación, permite las notificaciones en Ajustes → Recordatorios; si no, te lo muestro al abrir la app.';
+      return `Listo, te recuerdo «${r.text.toLowerCase()}» ${when}. ${how}`;
+    } catch (e) {
+      return `No pude crear el recordatorio: ${errorMessage(e)}`;
+    }
+  }
+
   /** Empieza o termina un ayuno desde la conversación. */
   async function runFast(f: { kind: 'start' | 'end'; at: number }): Promise<string> {
     try {
@@ -260,6 +300,10 @@ export function AssistantScreen() {
     push({ role: 'user', text: c.label });
     const r = handleChip(sessionRef.current, c, Date.now());
     setSession(r.session);
+    if (r.reminder) {
+      void createReminder(r.reminder).then((msg) => respond(`${msg}${r.question ? ` ${r.question.text}` : ''}`, r.question));
+      return;
+    }
     if (r.save) {
       void save(r.session);
       return;

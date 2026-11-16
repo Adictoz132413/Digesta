@@ -11,6 +11,7 @@ import { deriveFlags, foodKey } from '@/domain/foods';
 import type { BristolType, DigestionRating, FeelingAfter, HydrationLevel, MealType, QuantityLevel } from '@/domain/types';
 import { HYDRATION_LEVELS, formatMl, glassesToMl, hydrationLabel } from '@/domain/hydration';
 import type { MealInput, StoolInput, SymptomInput } from '@/db/repo';
+import { detectQuery, detectReminder, parseFutureTime, type QueryIntent } from './query';
 import { bristolIn, intensityIn, isBeverage, normalize, parseTime, parseUtterance, TYPICAL_HOUR, type DraftMeal, type DraftStool, type DraftSymptom, type ParseResult } from './nlu';
 
 // ───────────────────────── Estado ─────────────────────────
@@ -38,6 +39,8 @@ export interface Session {
   hydration?: HydrationLevel;
   /** Mencionó agua sin cantidad: preguntar el estimado. */
   waterAsk?: boolean;
+  /** Recordatorio pedido sin hora: se pregunta cuándo. */
+  pendingReminder?: { text: string; daily: boolean };
   digestion?: DigestionRating;
   /** Preguntas ya hechas (para no repetir las opcionales). */
   asked: string[];
@@ -65,7 +68,7 @@ export interface Chip {
   answer: Answer;
 }
 
-export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'hydration' | 'confirm';
+export type QuestionKind = 'unknown_food' | 'meal_type' | 'meal_time' | 'portions' | 'feeling' | 'intensity' | 'symptom_status' | 'symptom_time' | 'bristol' | 'hydration' | 'reminder_time' | 'confirm';
 
 export interface Question {
   id: string;
@@ -89,6 +92,10 @@ export interface Reply {
   cancelled?: boolean;
   /** Acción de ayuno a ejecutar (empezar o terminar). */
   fast?: { kind: 'start' | 'end'; at: number };
+  /** Consulta sobre el diario: la pantalla la responde con los datos. */
+  query?: QueryIntent;
+  /** Recordatorio a crear. */
+  reminder?: { at: number; text: string; daily: boolean };
 }
 
 export function emptySession(): Session {
@@ -433,6 +440,10 @@ export function interpret(q: Question, raw: string, p: ParseResult, now: number,
       const b = bristolIn(n);
       return b ? { kind: 'bristol', value: b } : undefined;
     }
+    case 'reminder_time': {
+      const t = parseFutureTime(n, now);
+      return t ? { kind: 'time', value: t } : p.intent === 'no' || p.intent === 'skip' ? { kind: 'cancel' } : undefined;
+    }
     case 'hydration': {
       if (p.intent === 'skip' || p.intent === 'no') return { kind: 'skip' };
       const h = p.hydration ?? hydrationFromText(n);
@@ -522,6 +533,8 @@ export function applyAnswer(s: Session, q: Question, a: Answer, now: number): bo
       st.bristol = a.value;
       return true;
     }
+    case 'reminder_time':
+      return a.kind === 'time';
     case 'hydration':
       if (a.kind === 'hydration') s.hydration = a.value;
       else if (a.kind !== 'skip') return false;
@@ -652,8 +665,62 @@ export interface TurnContext {
 }
 
 /** Procesa lo que la persona dijo o escribió. */
+function reminderQuestion(now: number): Question {
+  const at = (h: number, dayOffset: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + dayOffset);
+    d.setHours(h, 0, 0, 0);
+    return d.getTime();
+  };
+  const tonight = at(20, 0) > now + 30 * 60_000 ? at(20, 0) : undefined;
+  return {
+    id: 'reminder_time',
+    kind: 'reminder_time',
+    target: '',
+    text: '¿Cuándo te lo recuerdo? Por ejemplo: «en 2 horas», «a las 6» o «mañana a las 8».',
+    chips: [
+      { label: 'En 30 min', answer: { kind: 'time', value: now + 30 * 60_000 } },
+      { label: 'En 1 hora', answer: { kind: 'time', value: now + 3600_000 } },
+      ...(tonight ? [{ label: 'Esta noche 8:00 p. m.', answer: { kind: 'time', value: tonight } as Answer }] : []),
+      { label: 'Mañana 8:00 a. m.', answer: { kind: 'time', value: at(8, 1) } },
+      { label: 'Cancelar', answer: { kind: 'cancel' } },
+    ],
+  };
+}
+
+/** Respuesta a la hora de un recordatorio pendiente (voz o toque). */
+function finishReminder(s: Session, a: Answer, now: number): Reply {
+  const pr = s.pendingReminder!;
+  s.pendingReminder = undefined;
+  s.pending = nextQuestion(s, now);
+  if (a.kind !== 'time') return { session: s, text: 'Listo, no programé el recordatorio.', question: s.pending };
+  return { session: s, text: '', question: s.pending, reminder: { at: a.value, text: pr.text, daily: pr.daily } };
+}
+
 export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): Reply {
   const s = clone(prev);
+
+  // Hora de un recordatorio pedido antes
+  if (s.pending?.kind === 'reminder_time' && s.pendingReminder) {
+    const t = parseFutureTime(normalize(raw), ctx.now);
+    const p0 = parseUtterance(raw, { now: ctx.now });
+    if (t) return finishReminder(s, { kind: 'time', value: t }, ctx.now);
+    if (p0.intent === 'no' || p0.intent === 'cancel' || p0.intent === 'skip') return finishReminder(s, { kind: 'cancel' }, ctx.now);
+  }
+
+  // ¿Es una consulta sobre el diario? ("recuérdame si ayer comí salchipapa")
+  const query = detectQuery(raw, ctx.now, ctx.extraFoods);
+  if (query) return { session: s, text: '', query, question: s.pending };
+
+  // ¿Es un recordatorio? ("recuérdame en 2 horas tomar la creatina")
+  const rem = detectReminder(raw, ctx.now);
+  if (rem) {
+    if (rem.at) return { session: s, text: '', question: s.pending, reminder: { at: rem.at, text: rem.text, daily: rem.daily } };
+    s.pendingReminder = { text: rem.text, daily: rem.daily };
+    s.pending = reminderQuestion(ctx.now);
+    return { session: s, text: `Te recuerdo «${rem.text.toLowerCase()}». ${s.pending.text}`, question: s.pending };
+  }
+
   const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
 
@@ -664,6 +731,9 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
     s.pending = next;
     return { session: s, text: notes.join(' '), question: next, fast: p.fast };
   }
+
+  // "Guárdalo" guarda de inmediato (sólo se completan las preguntas obligatorias)
+  if (p.intent === 'confirm' && /\bguard/.test(normalize(raw)) && !isEmpty(s)) return finishSave(s, ctx.now);
 
   const q = s.pending;
   let ack: string[] = [];
@@ -703,6 +773,7 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
 export function handleChip(prev: Session, chip: Chip, now: number): Reply {
   const s = clone(prev);
   const q = s.pending;
+  if (q?.kind === 'reminder_time' && s.pendingReminder) return finishReminder(s, chip.answer, now);
   if (chip.answer.kind === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo.', cancelled: true };
   if (chip.answer.kind === 'save') return finishSave(s, now);
   if (q) applyAnswer(s, q, chip.answer, now);
