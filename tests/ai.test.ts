@@ -145,3 +145,37 @@ describe('IA dentro del diálogo', () => {
     expect(aiReady({ enabled: true, apiKey: 'sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx', model: 'claude-opus-5-5' })).toBe(true);
   });
 });
+
+describe('IA: formato enviado (sin campos opcionales)', () => {
+  it('convierte los rellenos en datos vacíos', async () => {
+    const { fromWire, WireOutput } = await import('@/voice/aiClient');
+    const w = WireOutput.parse({
+      kind: 'registro',
+      meals: [{ meal_type: 'ninguno', time: '', day_offset: 0, items: [{ name: 'Arepa', quantity: 'normal', custom_quantity: '', preparation: 'ninguno', ingredients: [] }], supplements: [], feeling_after: 'ninguno' }],
+      symptoms: [{ type: 'gases', custom_name: '', intensity: -1, time: '14:00', day_offset: 0, status: 'en_curso', duration_min: -1 }],
+      stools: [{ time: '', day_offset: 0, bristol: 0, blood: 'ninguno', pain: false, mucus: false, incomplete: false }],
+      water_ml: 0,
+      water_vague: true,
+      hydration: 'ninguno',
+      digestion: 0,
+      remove_from_draft: [],
+      answer: { intent: 'ninguno', meal_type: 'ninguno', time: '', day_offset: 0, number: -1, quantity: 'ninguno', feeling: 'ninguno' },
+      query: { kind: 'ate', foods: [], meal_type: 'ninguno', symptom_types: [], has_range: false, from_day_offset: 0, to_day_offset: 0 },
+      reminder: { text: '', time: '', day_offset: 0, in_minutes: 0, daily: false },
+      saved_ref: { foods: [], meal_type: 'ninguno', has_day: false, day_offset: 0, last: false, new_time: '', new_day_offset: 0 },
+      fast_time: '',
+      reply: '',
+    });
+    const o = fromWire(w);
+    expect(AiOutput.safeParse(o).success).toBe(true);
+    expect(o.meals[0]).toMatchObject({ meal_type: null, time: null, feeling_after: null });
+    expect(o.meals[0].items[0]).toMatchObject({ custom_quantity: null, preparation: null });
+    expect(o.symptoms[0]).toMatchObject({ intensity: null, duration_min: null, time: '14:00' });
+    expect(o.stools[0]).toMatchObject({ bristol: null, blood: null, time: null });
+    expect(o).toMatchObject({ water_ml: null, hydration: null, digestion: null, query: null, reminder: null, saved_ref: null, fast_time: null });
+    expect(o.answer).toMatchObject({ intent: null, number: null });
+    const t = aiToTurn(o, NOW);
+    expect(t.parse.meals[0].items[0].name).toBe('Arepa');
+    expect(t.parse.waterVague).toBe(true);
+  });
+});
