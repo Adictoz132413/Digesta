@@ -27,7 +27,7 @@ export function VoiceSection() {
       <SectionTitle>Asistente de voz</SectionTitle>
       <Card>
         <p className="text-sm leading-relaxed text-muted">
-          Cuéntale al asistente lo que comiste, cómo te sientes o si fuiste al baño. La interpretación y la ficha se hacen <strong className="text-text">en tu teléfono</strong>.
+          Cuéntale al asistente lo que comiste, cómo te sientes o si fuiste al baño. La interpretación y la ficha se hacen <strong className="text-text">en tu teléfono</strong>, salvo que actives la IA (abajo).
         </p>
         <Button className="mt-3" variant="soft" block onClick={() => navigate('/asistente')}>
           <Mic size={18} /> Abrir el asistente

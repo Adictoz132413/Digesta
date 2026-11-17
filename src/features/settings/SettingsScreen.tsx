@@ -23,6 +23,7 @@ import { Button, Card, IconButton, SectionTitle, Segmented, Stepper, Switch, cx,
 import { CsvExport } from '@/features/reports/CsvExport';
 import { BUILD_TIME, checkForAppUpdate } from '@/lib/appUpdate';
 import { VoiceSection } from './VoiceSection';
+import { AiSection } from './AiSection';
 import { CustomRemindersList } from './CustomRemindersList';
 
 const VERSION = '1.0.0';
@@ -59,6 +60,7 @@ export function SettingsScreen() {
       </Card>
 
       <VoiceSection />
+      <AiSection />
 
       <SectionTitle>Hidratación y análisis</SectionTitle>
       <Card>
@@ -548,8 +550,9 @@ function PrivacySection() {
             <p className="font-bold">Lo que el almacenamiento local protege</p>
             <ul className="mt-1 list-disc space-y-1 pl-5 text-muted">
               <li>Tus registros se guardan sólo en este dispositivo (IndexedDB del navegador). Nada se envía a servidores.</li>
+              <li>La única excepción es opcional: si activas la IA del asistente, la frase que dictas se envía a Anthropic (Claude) con tu clave. Tu diario guardado nunca se envía.</li>
               <li>No hay cuentas, publicidad, analítica ni rastreadores.</li>
-              <li>La app bloquea por política de seguridad (CSP) cualquier conexión a sitios externos.</li>
+              <li>La app bloquea por política de seguridad (CSP) cualquier conexión a sitios externos, salvo la de la IA de Anthropic, que sólo se usa si la activas.</li>
               <li>Funciona sin internet: no necesita conectarse a nada para registrar o analizar.</li>
             </ul>
           </div>
@@ -564,6 +567,7 @@ function PrivacySection() {
               <li>Si borras los datos del navegador, desinstalas la app o pierdes el teléfono, los registros se pierden si no tienes copia de seguridad.</li>
               <li>Las copias JSON, los CSV y los PDF que exportes no están cifrados. Guárdalos en un lugar seguro y compártelos sólo con quien elijas.</li>
               <li>Si usas el micrófono del asistente y tu teléfono no reconoce la voz sin conexión, Chrome puede enviar el audio a Google para transcribirlo. DIGESTA no lo recibe; la app te pide permiso antes y puedes usar el dictado del teclado.</li>
+              <li>Con la IA activada, Anthropic recibe y procesa el texto de lo que dictas según sus políticas. La clave de la IA queda guardada en este teléfono: quien tenga acceso a él podría usarla, por eso conviene ponerle un límite de gasto.</li>
             </ul>
           </div>
         </div>

@@ -19,6 +19,7 @@ import { stoolAlerts, symptomAlerts, type MedicalAlert } from '@/domain/alerts';
 import type { Meal } from '@/domain/types';
 import { addRefMeal, editDraft, emptySession, handleChip, handleUtterance, isEmpty, summaryLines, toRecords, type Chip, type Question, type Session } from '@/voice/dialog';
 import { DraftEditor } from './DraftEditor';
+import { AiError, aiReady, aiToTurn, interpretWithAi, readAiPrefs, type AiTurn } from '@/voice/ai';
 import { findSavedMealCandidates, moveSavedFoods } from '@/voice/moveSaved';
 import { mealTypeLabel } from '@/domain/labels';
 import {
@@ -81,6 +82,9 @@ export function AssistantScreen() {
   const [consentOpen, setConsentOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [aiOn, setAiOn] = useState(() => aiReady());
+  const aiWarned = useRef(false);
   const recRef = useRef<Recognizer>(undefined);
   const lastWasVoice = useRef(false);
   const seq = useRef(1);
@@ -109,7 +113,7 @@ export function AssistantScreen() {
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [msgs, partial]);
+  }, [msgs, partial, thinking]);
 
   const updatePrefs = (p: Partial<VoicePrefs>) => {
     const next = { ...prefs, ...p };
@@ -145,7 +149,7 @@ export function AssistantScreen() {
       onPartial: setPartial,
       onFinal: (t) => {
         lastWasVoice.current = true;
-        submitRef.current(t);
+        void submitRef.current(t);
       },
       onError: (m, code) => {
         if (code !== 'no-speech') toast(m, { tone: 'error' });
@@ -233,12 +237,42 @@ export function AssistantScreen() {
 
   // ───────── Turnos ─────────
 
+  /** Pide a la IA que interprete la frase; si no se puede, devuelve undefined (se usan las reglas locales). */
+  const askAi = useCallback(
+    async (t: string): Promise<AiTurn | undefined> => {
+      const prefs = readAiPrefs();
+      setAiOn(aiReady(prefs));
+      if (!aiReady(prefs)) return undefined;
+      const s = sessionRef.current;
+      // Respuestas cortas a una pregunta ("sí", "a las 8", "7") y la hora de un recordatorio: bastan las reglas locales
+      if (s.pending && (s.pending.kind === 'reminder_time' || t.split(/\s+/).length <= 3)) return undefined;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return undefined;
+      setThinking(true);
+      try {
+        const now = Date.now();
+        const out = await interpretWithAi(t, { now, draft: isEmpty(s) ? [] : summaryLines(s, now), pending: s.pending?.text, bottleMl: bottleRef.current }, prefs);
+        const draftNames = s.meals.flatMap((m) => m.items.map((i) => ({ name: i.name, key: i.key })));
+        return aiToTurn(out, now, extraRef.current, draftNames);
+      } catch (e) {
+        if (!aiWarned.current || (e instanceof AiError && e.code !== 'red')) {
+          aiWarned.current = true;
+          toast(`${e instanceof AiError ? e.message : 'No pude usar la IA.'} Uso el modo sin conexión.`, { tone: 'info' });
+        }
+        return undefined;
+      } finally {
+        setThinking(false);
+      }
+    },
+    [toast],
+  );
+
   const submit = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const t = text.trim();
       if (!t) return;
       push({ role: 'user', text: t });
-      const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current, bottleMl: bottleRef.current });
+      const ai = await askAi(t);
+      const r = handleUtterance(sessionRef.current, t, { now: Date.now(), extraFoods: extraRef.current, bottleMl: bottleRef.current, ai });
       setSession(r.session);
       if (r.fast) {
         void runFast(r.fast).then((msg) => respond(`${msg}${r.text ? ` ${r.text}` : ''}`, r.question));
@@ -306,7 +340,7 @@ export function AssistantScreen() {
       }
       respond(r.text, r.question);
     },
-    [respond, save],
+    [askAi, respond, save],
   );
   /** Responde una pregunta con los datos del diario (todo en el teléfono). */
   async function answerFromDiary(q: QueryIntent): Promise<string> {
@@ -392,8 +426,9 @@ export function AssistantScreen() {
   };
 
   const sendTyped = () => {
+    if (thinking) return;
     lastWasVoice.current = false;
-    submit(input);
+    void submit(input);
     setInput('');
   };
 
@@ -416,8 +451,17 @@ export function AssistantScreen() {
         <div className="min-w-0">
           <h1 className="text-2xl font-extrabold tracking-tight">Asistente de voz</h1>
           <p className="flex items-center gap-1 text-xs text-muted">
-            <ShieldCheck size={13} className="text-good" />
-            {device === 'available' ? 'Voz reconocida en tu teléfono' : 'La ficha se organiza en tu teléfono'}
+            {aiOn ? (
+              <>
+                <Sparkles size={13} className="text-primary" />
+                Con IA (Claude): sólo se envía lo que dices
+              </>
+            ) : (
+              <>
+                <ShieldCheck size={13} className="text-good" />
+                {device === 'available' ? 'Voz reconocida en tu teléfono' : 'La ficha se organiza en tu teléfono'}
+              </>
+            )}
           </p>
         </div>
         <div className="flex shrink-0">
@@ -470,7 +514,7 @@ export function AssistantScreen() {
                 <div className="mt-3 flex flex-col gap-2">
                   <p className="text-xs font-semibold text-muted">Prueba con algo como:</p>
                   {EXAMPLES.map((e) => (
-                    <button key={e} type="button" onClick={() => submit(e)} className="rounded-2xl bg-surface-2 px-3 py-2 text-left text-sm">
+                    <button key={e} type="button" disabled={thinking} onClick={() => void submit(e)} className="rounded-2xl bg-surface-2 px-3 py-2 text-left text-sm">
                       «{e}»
                     </button>
                   ))}
@@ -479,6 +523,13 @@ export function AssistantScreen() {
             </div>
           </div>
         ))}
+        {thinking && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-2 rounded-3xl rounded-bl-lg border border-border bg-surface px-4 py-3 text-[15px] text-muted" role="status">
+              <Sparkles size={16} className="animate-pulse text-primary" aria-hidden /> Pensando…
+            </div>
+          </div>
+        )}
         {(listening || partial) && (
           <div className="flex justify-end">
             <div className="max-w-[88%] rounded-3xl rounded-br-lg border-2 border-dashed border-primary px-4 py-3 text-[15px]">
@@ -554,7 +605,7 @@ export function AssistantScreen() {
             enterKeyHint="send"
             autoComplete="off"
           />
-          <button type="submit" aria-label="Enviar" disabled={!input.trim()} className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-primary disabled:opacity-30">
+          <button type="submit" aria-label="Enviar" disabled={!input.trim() || thinking} className="absolute right-2 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full text-primary disabled:opacity-30">
             <Send size={20} />
           </button>
         </form>

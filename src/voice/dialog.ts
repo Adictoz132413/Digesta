@@ -11,6 +11,7 @@ import { catalogFood, deriveFlags, foodKey, prettyName } from '@/domain/foods';
 import type { BristolType, DigestionRating, FeelingAfter, HydrationLevel, MealType, Preparation, QuantityLevel } from '@/domain/types';
 import { HYDRATION_LEVELS, formatMl, glassesToMl, hydrationLabel } from '@/domain/hydration';
 import type { MealInput, StoolInput, SymptomInput } from '@/db/repo';
+import type { AiTurn } from './ai';
 import { detectQuery, detectReminder, parseFutureTime, type QueryIntent } from './query';
 import { bristolIn, intensityIn, isBeverage, normalize, parseTime, parseUtterance, TYPICAL_HOUR, type DraftMeal, type DraftStool, type DraftSymptom, type ParseResult } from './nlu';
 
@@ -689,9 +690,10 @@ export interface TurnContext {
   now: number;
   bottleMl?: number;
   extraFoods?: { name: string; key: string }[];
+  /** Interpretación hecha por la IA (si está activada); si falta, se usan las reglas locales. */
+  ai?: AiTurn;
 }
 
-/** Procesa lo que la persona dijo o escribió. */
 /**
  * Mueve alimentos del borrador a otra hora. Si eran toda la comida, cambia su
  * hora; si no, los separa en una comida nueva. Devuelve los nombres movidos.
@@ -786,11 +788,11 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
   }
 
   // ¿Es una consulta sobre el diario? ("recuérdame si ayer comí salchipapa")
-  const query = detectQuery(raw, ctx.now, ctx.extraFoods);
+  const query = ctx.ai ? ctx.ai.query : detectQuery(raw, ctx.now, ctx.extraFoods);
   if (query) return { session: s, text: '', query, question: s.pending };
 
   // ¿Es un recordatorio? ("recuérdame en 2 horas tomar la creatina")
-  const rem = detectReminder(raw, ctx.now);
+  const rem = ctx.ai ? ctx.ai.reminder : detectReminder(raw, ctx.now);
   if (rem) {
     if (rem.at) return { session: s, text: '', question: s.pending, reminder: { at: rem.at, text: rem.text, daily: rem.daily } };
     s.pendingReminder = { text: rem.text, daily: rem.daily };
@@ -798,7 +800,8 @@ export function handleUtterance(prev: Session, raw: string, ctx: TurnContext): R
     return { session: s, text: `Te recuerdo «${rem.text.toLowerCase()}». ${s.pending.text}`, question: s.pending };
   }
 
-  const p = parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
+  const p = ctx.ai?.parse ?? parseUtterance(raw, { now: ctx.now, extraFoods: ctx.extraFoods, bottleMl: ctx.bottleMl });
+  if (p.empty && ctx.ai?.reply) return { session: s, text: `${ctx.ai.reply}${s.pending ? ` ${s.pending.text}` : ''}`, question: s.pending };
   if (p.intent === 'cancel') return { session: emptySession(), text: 'Listo, descarté todo. Cuéntame de nuevo cuando quieras.', cancelled: true };
 
   if (p.editRequest) {

@@ -16,7 +16,7 @@ const base = process.env.BASE_PATH ?? '/';
  */
 const CSP =
   "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; " +
-  "connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'";
+  "connect-src 'self' https://api.anthropic.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'";
 
 function cspPlugin(): Plugin {
   return {
