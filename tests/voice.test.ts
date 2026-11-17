@@ -317,3 +317,16 @@ describe('hora que no es cantidad (novena captura)', () => {
     expect(P('comí 3 huevos').meals[0].items[0]).toMatchObject({ key: 'huevo', customQuantity: '3' });
   });
 });
+
+describe('lista de verduras no se traga lo siguiente (décima captura)', () => {
+  it('el pollo a la plancha queda aparte y «día» no es alimento', () => {
+    const r = P('cené a las 8 un poquito de salchipapa del día de ayer, arroz, aguacate, vegetales entre esos zanahoria pimentón pollo a la plancha con un poquito de salsa de soya, sopa de huevo y un poquito de gaseosa');
+    const m = r.meals[0];
+    expect(m.items.every((i) => i.known)).toBe(true);
+    expect(m.items.map((i) => i.key)).toEqual(['salchipapa', 'arroz', 'aguacate', 'verduras', 'pollo', 'salsa de soya', 'sopa', 'gaseosa']);
+    expect(m.items.find((i) => i.key === 'verduras')).toMatchObject({ ingredients: ['Zanahoria', 'Pimentón'] });
+    expect(m.items.find((i) => i.key === 'verduras')?.preparation).toBeUndefined();
+    expect(m.items.find((i) => i.key === 'pollo')?.preparation).toBe('asado');
+    expect(m.at).toBe(new Date(2026, 10, 14, 20, 0).getTime());
+  });
+});

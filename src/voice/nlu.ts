@@ -251,7 +251,7 @@ const STOP = new Set(
     'anota anotes anotar anotame registra registres registrar registrame apunta apuntes apuntar apuntame agrega agregues agregar agregame ' +
     'pon ponme ponle guarda guardes guardar escribe escribas escribir mete metele suma sumale incluye incluyas ' +
     'entre esos esas estos estas ellos ellas incluyendo volvi volver volvimos repeti segui pedi compre prepare cocine calente ' +
-    'sobro sobraron sobrado sobrada sobras sobrante quedo quedaba recalente recalentado recalentada'
+    'sobro sobraron sobrado sobrada sobras sobrante quedo quedaba recalente recalentado recalentada dia dias anterior pasado pasada'
   ).split(' '),
 );
 
@@ -794,7 +794,10 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
         (listParent && between.length <= 3 && (between.length === 0 ? ingredientsOf.has(parent) || j === i + 1 : /^(entre|como|tipo|de|con|y)$/.test(between[0])));
       const onlyFiller = between.every((w) => /^(de|con|y|el|la|los|las|entre|esos|esas|ellos|ellas|como|tipo|\d+)$/.test(w) || SMALL.test(w) || LARGE.test(w));
       // Una bebida sólo es ingrediente de otra bebida ("batido de proteína con leche"), no de un plato ("sándwich… y una gaseosa")
-      if (!linked || !onlyFiller || (isBeverage(allSpans[j].entry.key) && !isBeverage(parent.entry.key)) || COMPOSITE.has(allSpans[j].entry.key)) break;
+      // Dentro de "verduras" sólo entran verduras y dentro de "frutas" sólo frutas (el pollo que sigue no es una verdura)
+      const childTags = catalogFood(allSpans[j].entry.key)?.tags ?? [];
+      const fitsList = parent.entry.key === 'verduras' ? childTags.some((t) => t === 'verdura' || t === 'cruciferas') : parent.entry.key === 'frutas' ? childTags.includes('fruta') : true;
+      if (!linked || !onlyFiller || !fitsList || (isBeverage(allSpans[j].entry.key) && !isBeverage(parent.entry.key)) || COMPOSITE.has(allSpans[j].entry.key)) break;
       ingredientsOf.set(parent, [...(ingredientsOf.get(parent) ?? []), allSpans[j]]);
       childSpans.add(allSpans[j]);
       prevEnd = allSpans[j].end;
@@ -1120,7 +1123,7 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
     }
 
     // "la salchipapa de ayer" = sobras de ayer: no cambia la fecha de la comida ("el almuerzo de ayer" sí)
-    const cTime = c.replace(/(\w+) (?:de|del) (ayer|anoche|antier|anteayer)\b/g, (m0, w: string) => (/^(desayuno|almuerzo|cena|comida|merienda|onces|algo)$/.test(w) ? m0 : w));
+    const cTime = c.replace(/\b(?:del|de) dia (de|del) (ayer|anterior)\b/g, ' de ayer').replace(/(\w+) (?:de|del) (ayer|anoche|antier|anteayer)\b/g, (m0, w: string) => (/^(desayuno|almuerzo|cena|comida|merienda|onces|algo)$/.test(w) ? m0 : w));
     const timeForMeal = items.length || mealType ? parseTime(cTime, now, mealType) : undefined;
     if (items.length || supplements.length || (mealType && !syms.length)) {
       const startNew = !current || (mealType && current.mealType && mealType !== current.mealType) || (timeForMeal !== undefined && current.timeExplicit && Math.abs((current.at ?? 0) - timeForMeal) > HOUR);
