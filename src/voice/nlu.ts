@@ -249,7 +249,9 @@ const STOP = new Set(
     'necesito necesitas quiero quisiera puedes podrias corrijas corrige corregir corrigeme arregla arreglar arreglame arregles ' +
     'cambia cambiar cambiame cambies modifica modificar modifiques edita editar edites quites borres pongas ayudame ayuda favor lo del lo de ' +
     'anota anotes anotar anotame registra registres registrar registrame apunta apuntes apuntar apuntame agrega agregues agregar agregame ' +
-    'pon ponme ponle guarda guardes guardar escribe escribas escribir mete metele suma sumale incluye incluyas'
+    'pon ponme ponle guarda guardes guardar escribe escribas escribir mete metele suma sumale incluye incluyas ' +
+    'entre esos esas estos estas ellos ellas incluyendo volvi volver volvimos repeti segui pedi compre prepare cocine calente ' +
+    'sobro sobraron sobrado sobrada sobras sobrante quedo quedaba recalente recalentado recalentada'
   ).split(' '),
 );
 
@@ -731,7 +733,7 @@ function applyCorrections(tokens: string[], spans: FoodSpan[]): { kept: FoodSpan
 }
 
 /** Platos que "contienen" lo que se nombra después con "de" o "con". */
-const COMPOSITE = new Set(['omelette', 'sandwich', 'wrap', 'crepe', 'ensalada', 'pizza', 'hamburguesa', 'perro caliente', 'arepa', 'tostadas', 'sopa', 'batido de proteina', 'empanada', 'tortilla'].map(foodKey));
+const COMPOSITE = new Set(['verduras', 'frutas', 'omelette', 'sandwich', 'wrap', 'crepe', 'ensalada', 'pizza', 'hamburguesa', 'perro caliente', 'arepa', 'tostadas', 'sopa', 'batido de proteina', 'empanada', 'tortilla'].map(foodKey));
 
 /** Pide corregir algo ya registrado. */
 const EDIT_REQUEST = /\b(corrij\w*|corrig\w*|arregl\w*|modific\w*|edit(a|ar|ame|es)|cambi(a|ar|ame|es) (la|el|lo)\b.*\b(que me (pusiste|registraste|anotaste)|guardad))/;
@@ -781,8 +783,13 @@ function parseMealClause(clause: string, lex: Map<string, LexEntry>): { items: D
     let prevEnd = parent.end;
     for (let j = i + 1; j < allSpans.length; j++) {
       const between = tokens.slice(prevEnd, allSpans[j].start);
-      const linked = between.length > 0 && between.length <= 4 && /^(de|con)$/.test(between[0]) || (between.length >= 1 && between.length <= 3 && between[0] === 'y' && ingredientsOf.has(parent));
-      const onlyFiller = between.every((w) => /^(de|con|y|el|la|los|las|\d+)$/.test(w) || SMALL.test(w) || LARGE.test(w));
+      const listParent = /^(verduras|frutas|ensalada)$/.test(parent.entry.key);
+      const linked =
+        (between.length > 0 && between.length <= 4 && /^(de|con)$/.test(between[0])) ||
+        (between.length >= 1 && between.length <= 3 && between[0] === 'y' && ingredientsOf.has(parent)) ||
+        // "vegetales entre esos zanahoria, pimentón", "frutas como fresa y kiwi"
+        (listParent && between.length <= 3 && (between.length === 0 ? ingredientsOf.has(parent) || j === i + 1 : /^(entre|como|tipo|de|con|y)$/.test(between[0])));
+      const onlyFiller = between.every((w) => /^(de|con|y|el|la|los|las|entre|esos|esas|ellos|ellas|como|tipo|\d+)$/.test(w) || SMALL.test(w) || LARGE.test(w));
       // Una bebida sólo es ingrediente de otra bebida ("batido de proteína con leche"), no de un plato ("sándwich… y una gaseosa")
       if (!linked || !onlyFiller || (isBeverage(allSpans[j].entry.key) && !isBeverage(parent.entry.key)) || COMPOSITE.has(allSpans[j].entry.key)) break;
       ingredientsOf.set(parent, [...(ingredientsOf.get(parent) ?? []), allSpans[j]]);
@@ -1109,7 +1116,9 @@ export function parseUtterance(raw: string, ctx: ParseContext): ParseResult {
       lastKind = 'symptom';
     }
 
-    const timeForMeal = items.length || mealType ? parseTime(c, now, mealType) : undefined;
+    // "la salchipapa de ayer" = sobras de ayer: no cambia la fecha de la comida ("el almuerzo de ayer" sí)
+    const cTime = c.replace(/(\w+) (?:de|del) (ayer|anoche|antier|anteayer)\b/g, (m0, w: string) => (/^(desayuno|almuerzo|cena|comida|merienda|onces|algo)$/.test(w) ? m0 : w));
+    const timeForMeal = items.length || mealType ? parseTime(cTime, now, mealType) : undefined;
     if (items.length || supplements.length || (mealType && !syms.length)) {
       const startNew = !current || (mealType && current.mealType && mealType !== current.mealType) || (timeForMeal !== undefined && current.timeExplicit && Math.abs((current.at ?? 0) - timeForMeal) > HOUR);
       if (startNew) {

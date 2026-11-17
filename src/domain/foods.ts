@@ -222,6 +222,8 @@ export const FOOD_CATALOG: CatalogFood[] = [
   { name: 'Huevo cocido', tags: ['proteina'], aliases: ['huevos cocidos', 'huevo duro', 'huevos duros'] },
   { name: 'Arepa de maíz', tags: ['cereal'], aliases: ['arepa de maiz'] },
   { name: 'Mantequilla de maní', tags: ['grasa', 'leguminosa'], aliases: ['mantequilla de mani', 'peanut butter'] },
+  { name: 'Verduras', tags: ['verdura', 'fibra_alta'], aliases: ['vegetales', 'verdura', 'vegetal', 'verduritas', 'verdurita'] },
+  { name: 'Salsa de soya', tags: ['procesado'], aliases: ['soya', 'salsa soya', 'sillao', 'salsa china'] },
   { name: 'Omelette', tags: ['proteina'], ingredients: ['Huevo'], aliases: ['omelet', 'ommelet', 'omellete', 'omelete', 'omeleth', 'tortilla de huevo', 'tortilla francesa'] },
   { name: 'Wrap', tags: ['gluten', 'cereal'] },
   { name: 'Crepe', tags: ['gluten', 'lacteo'], aliases: ['crepes', 'crep'] },

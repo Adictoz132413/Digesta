@@ -289,3 +289,19 @@ describe('platos compuestos y corrección manual del borrador (cuarta captura)',
     expect(s.meals[0].items.map((i) => i.key)).toEqual(['salchichon', 'arepa con queso']);
   });
 });
+
+describe('sobras de ayer y listas de verduras (octava captura)', () => {
+  it('«volví a comer… vegetales entre esos zanahoria pimentón… la salchipapa de ayer»', () => {
+    const r = P('volví a comer arroz pollo con salsa de soya qué más a vegetales entre esos zanahoria pimentón un poquito de la salchipapa de ayer un poquito de sopa de huevo un poquito de gaseosa');
+    const m = r.meals[0];
+    expect(m.items.every((i) => i.known)).toBe(true);
+    expect(m.items.map((i) => i.key)).toEqual(['arroz', 'pollo', 'salsa de soya', 'verduras', 'salchipapa', 'sopa', 'gaseosa']);
+    expect(m.items.find((i) => i.key === 'verduras')?.ingredients).toEqual(['Zanahoria', 'Pimentón']);
+    // "de ayer" son sobras: la comida no se pasa al día anterior
+    expect(m.timeExplicit).toBe(false);
+  });
+  it('«el almuerzo de ayer» sí es de ayer', () => {
+    const m = P('el almuerzo de ayer fue arroz con pollo').meals[0];
+    expect(m.at).toBe(new Date(2026, 10, 14, 12, 30).getTime());
+  });
+});
