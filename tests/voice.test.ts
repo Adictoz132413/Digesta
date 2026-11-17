@@ -305,3 +305,15 @@ describe('sobras de ayer y listas de verduras (octava captura)', () => {
     expect(m.at).toBe(new Date(2026, 10, 14, 12, 30).getTime());
   });
 });
+
+describe('hora que no es cantidad (novena captura)', () => {
+  it('«cené a las 8 salchipapa» no son 8 salchipapas', () => {
+    const r = P('cené a las 8 salchipapa, pollo a la plancha con salsa de soya, arroz, aguacate, un poquito de sopa, un poquito de gaseosa y un poquito de verduras');
+    const items = r.meals[0].items;
+    expect(items[0]).toMatchObject({ key: 'salchipapa', quantity: 'normal' });
+    expect(items[0].customQuantity).toBeUndefined();
+    expect(r.meals[0].at).toBe(new Date(2026, 10, 14, 20, 0).getTime());
+    expect(P('desayuné a las 7:30 2 arepas').meals[0].items[0]).toMatchObject({ key: 'arepa', customQuantity: '2' });
+    expect(P('comí 3 huevos').meals[0].items[0]).toMatchObject({ key: 'huevo', customQuantity: '3' });
+  });
+});

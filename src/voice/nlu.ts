@@ -667,6 +667,9 @@ function quantityBefore(tokens: string[], start: number, minIdx: number, taken: 
   // NUM UNIDAD (de)
   for (let j = 0; j < win.length; j++) {
     const n = win[j];
+    // Un número que es parte de una hora no es cantidad: "a las 8 salchipapa", "tipo 7:30"
+    const prevTok = tokens[from + j - 1];
+    if (/^\d/.test(n) && (n.includes(':') || prevTok === 'las' || prevTok === 'la' || /^(manana|tarde|noche|am|pm)$/.test(win[j + 1] ?? '') || (win[j + 1] === 'de' && win[j + 2] === 'la'))) continue;
     if (/^\d+(:\d+)?$/.test(n) || n === 'media' || n === 'medio' || n === 'un' || n === 'una') {
       const unit = win[j + 1];
       if (unit && UNITS.test(unit)) {
