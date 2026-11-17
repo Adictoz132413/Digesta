@@ -3,7 +3,6 @@
  * Contiene el formato de respuesta y las instrucciones.
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import * as z from 'zod/v4';
 import { AiError, type AiContext, type AiPrefs } from './ai';
 
@@ -109,100 +108,140 @@ export const AiOutput = z.object({
 export type AiOutput = z.infer<typeof AiOutput>;
 
 /*
- * Formato que se envía a la API. La salida estructurada admite como máximo 16
- * campos con «unión» (p. ej. texto o null), así que aquí no hay null: se usan
- * valores de relleno ("" sin hora, "ninguno", -1 o 0 sin dato, false). Luego
- * `fromWire` los convierte al formato con null que usa el resto de la app.
+ * Formato de la respuesta. No se usa la «salida estructurada» de la API (su
+ * gramática compilada tiene un tamaño máximo y este formato lo supera): la IA
+ * responde un JSON siguiendo la plantilla de abajo y aquí se valida con
+ * tolerancia — un dato que falta o viene mal se toma como vacío.
+ * Sin null: "" sin texto/hora, «ninguno» sin opción, -1 o 0 sin número.
  */
 const NONE = 'ninguno' as const;
-const WTime = () => z.string().describe('"HH:MM" en 24 h, o "" si no lo dijo');
-const WDay = () => z.number().describe('0 hoy, -1 ayer, -2 antier; 1 mañana (sólo recordatorios)');
+const txt = () => z.string().catch('');
+const num = (d: number) => z.number().catch(d);
+const bool = () => z.boolean().catch(false);
+const pick = <T extends readonly [string, ...string[]]>(values: T, d: T[number]) => z.enum(values).catch(d);
+const list = <T extends z.ZodType>(item: T) => z.array(item).catch([]);
+const withNone = <T extends readonly string[]>(values: T) => [...values, NONE] as unknown as [T[number] | typeof NONE, ...(T[number] | typeof NONE)[]];
 
 const WireItem = z.object({
-  name: z.string(),
-  quantity: z.enum(QUANTITIES),
-  custom_quantity: z.string().describe('"" si no es personalizada'),
-  preparation: z.enum([...PREPS, NONE]),
-  ingredients: z.array(z.string()),
+  name: txt(),
+  quantity: pick(QUANTITIES, 'normal'),
+  custom_quantity: txt(),
+  preparation: pick(withNone(PREPS), NONE),
+  ingredients: list(z.string()),
 });
 
 const WireMeal = z.object({
-  meal_type: z.enum([...MEAL_TYPES, NONE]),
-  time: WTime(),
-  day_offset: WDay(),
-  items: z.array(WireItem),
-  supplements: z.array(z.string()),
-  feeling_after: z.enum([...FEELINGS, NONE]),
+  meal_type: pick(withNone(MEAL_TYPES), NONE),
+  time: txt(),
+  day_offset: num(0),
+  items: list(WireItem),
+  supplements: list(z.string()),
+  feeling_after: pick(withNone(FEELINGS), NONE),
 });
 
 const WireSymptom = z.object({
-  type: z.enum(SYMPTOMS),
-  custom_name: z.string().describe('"" salvo si type es otro'),
-  intensity: z.number().describe('0 a 10, o -1 si no se sabe'),
-  time: WTime(),
-  day_offset: WDay(),
-  status: z.enum(['en_curso', 'termino', 'desconocido']),
-  duration_min: z.number().describe('minutos, o -1 si no lo dijo'),
+  type: pick(SYMPTOMS, 'otro'),
+  custom_name: txt(),
+  intensity: num(-1),
+  time: txt(),
+  day_offset: num(0),
+  status: pick(['en_curso', 'termino', 'desconocido'] as const, 'desconocido'),
+  duration_min: num(-1),
 });
 
 const WireStool = z.object({
-  time: WTime(),
-  day_offset: WDay(),
-  bristol: z.number().describe('1 a 7, o 0 si no se puede deducir'),
-  blood: z.enum(['no', 'papel', 'heces', 'abundante', NONE]),
-  pain: z.boolean(),
-  mucus: z.boolean(),
-  incomplete: z.boolean(),
+  time: txt(),
+  day_offset: num(0),
+  bristol: num(0),
+  blood: pick(withNone(['no', 'papel', 'heces', 'abundante'] as const), NONE),
+  pain: bool(),
+  mucus: bool(),
+  incomplete: bool(),
 });
 
+const obj = <T extends z.ZodRawShape>(shape: T) => {
+  const o = z.object(shape);
+  return o.catch(() => o.parse({}));
+};
+
 export const WireOutput = z.object({
-  kind: z.enum(['registro', 'consulta', 'recordatorio', 'corregir_guardado', 'mover_guardado', 'ayuno_inicio', 'ayuno_fin', 'respuesta', 'otro']),
-  meals: z.array(WireMeal),
-  symptoms: z.array(WireSymptom),
-  stools: z.array(WireStool),
-  water_ml: z.number().describe('0 si no dio cantidad'),
-  water_vague: z.boolean(),
-  hydration: z.enum(['poca', 'normal', 'bastante', NONE]),
-  digestion: z.number().describe('1 a 5, o 0 si no la valoró'),
-  remove_from_draft: z.array(z.string()),
-  answer: z.object({
-    intent: z.enum(['confirm', 'no', 'cancel', 'skip', NONE]),
-    meal_type: z.enum([...MEAL_TYPES, NONE]),
-    time: WTime(),
-    day_offset: WDay(),
-    number: z.number().describe('número suelto que respondió, o -1'),
-    quantity: z.enum(['poca', 'normal', 'abundante', NONE]),
-    feeling: z.enum([...FEELINGS, NONE]),
+  kind: pick(['registro', 'consulta', 'recordatorio', 'corregir_guardado', 'mover_guardado', 'ayuno_inicio', 'ayuno_fin', 'respuesta', 'otro'] as const, 'otro'),
+  meals: list(WireMeal),
+  symptoms: list(WireSymptom),
+  stools: list(WireStool),
+  water_ml: num(0),
+  water_vague: bool(),
+  hydration: pick(withNone(['poca', 'normal', 'bastante'] as const), NONE),
+  digestion: num(0),
+  remove_from_draft: list(z.string()),
+  answer: obj({
+    intent: pick(withNone(['confirm', 'no', 'cancel', 'skip'] as const), NONE),
+    meal_type: pick(withNone(MEAL_TYPES), NONE),
+    time: txt(),
+    day_offset: num(0),
+    number: num(-1),
+    quantity: pick(withNone(['poca', 'normal', 'abundante'] as const), NONE),
+    feeling: pick(withNone(FEELINGS), NONE),
   }),
-  query: z.object({
-    kind: z.enum(QUERY_KINDS),
-    foods: z.array(z.string()),
-    meal_type: z.enum([...MEAL_TYPES, NONE]),
-    symptom_types: z.array(z.enum(SYMPTOMS)),
-    has_range: z.boolean(),
-    from_day_offset: z.number(),
-    to_day_offset: z.number(),
+  query: obj({
+    kind: pick(QUERY_KINDS, 'what_ate'),
+    foods: list(z.string()),
+    meal_type: pick(withNone(MEAL_TYPES), NONE),
+    symptom_types: list(z.enum(SYMPTOMS)),
+    has_range: bool(),
+    from_day_offset: num(0),
+    to_day_offset: num(0),
   }),
-  reminder: z.object({
-    text: z.string(),
-    time: WTime(),
-    day_offset: WDay(),
-    in_minutes: z.number().describe('0 si no lo dijo en minutos u horas relativas'),
-    daily: z.boolean(),
+  reminder: obj({
+    text: txt(),
+    time: txt(),
+    day_offset: num(0),
+    in_minutes: num(0),
+    daily: bool(),
   }),
-  saved_ref: z.object({
-    foods: z.array(z.string()),
-    meal_type: z.enum([...MEAL_TYPES, NONE]),
-    has_day: z.boolean(),
-    day_offset: z.number(),
-    last: z.boolean(),
-    new_time: WTime(),
-    new_day_offset: z.number(),
+  saved_ref: obj({
+    foods: list(z.string()),
+    meal_type: pick(withNone(MEAL_TYPES), NONE),
+    has_day: bool(),
+    day_offset: num(0),
+    last: bool(),
+    new_time: txt(),
+    new_day_offset: num(0),
   }),
-  fast_time: WTime(),
-  reply: z.string(),
+  fast_time: txt(),
+  reply: txt(),
 });
 export type WireOutput = z.infer<typeof WireOutput>;
+
+/** Plantilla que se le muestra a la IA (los valores indican el tipo y el relleno). */
+export const TEMPLATE = `{
+  "kind": "registro | consulta | recordatorio | corregir_guardado | mover_guardado | ayuno_inicio | ayuno_fin | respuesta | otro",
+  "meals": [{
+    "meal_type": "desayuno | almuerzo | cena | merienda | bebida | ninguno",
+    "time": "HH:MM o \\"\\"", "day_offset": 0,
+    "items": [{ "name": "texto", "quantity": "poca | normal | abundante | personalizada", "custom_quantity": "texto o \\"\\"", "preparation": "${PREPS.join(' | ')} | ninguno", "ingredients": ["texto"] }],
+    "supplements": ["texto"],
+    "feeling_after": "${FEELINGS.join(' | ')} | ninguno"
+  }],
+  "symptoms": [{ "type": "${SYMPTOMS.join(' | ')}", "custom_name": "texto o \\"\\"", "intensity": "0-10 o -1", "time": "HH:MM o \\"\\"", "day_offset": 0, "status": "en_curso | termino | desconocido", "duration_min": "minutos o -1" }],
+  "stools": [{ "time": "HH:MM o \\"\\"", "day_offset": 0, "bristol": "1-7 o 0", "blood": "no | papel | heces | abundante | ninguno", "pain": false, "mucus": false, "incomplete": false }],
+  "water_ml": 0, "water_vague": false, "hydration": "poca | normal | bastante | ninguno", "digestion": "1-5 o 0",
+  "remove_from_draft": ["nombre exacto del borrador"],
+  "answer": { "intent": "confirm | no | cancel | skip | ninguno", "meal_type": "… | ninguno", "time": "HH:MM o \\"\\"", "day_offset": 0, "number": -1, "quantity": "poca | normal | abundante | ninguno", "feeling": "… | ninguno" },
+  "query": { "kind": "${QUERY_KINDS.join(' | ')}", "foods": ["texto"], "meal_type": "… | ninguno", "symptom_types": ["…"], "has_range": false, "from_day_offset": 0, "to_day_offset": 0 },
+  "reminder": { "text": "texto", "time": "HH:MM o \\"\\"", "day_offset": 0, "in_minutes": 0, "daily": false },
+  "saved_ref": { "foods": ["texto"], "meal_type": "… | ninguno", "has_day": false, "day_offset": 0, "last": false, "new_time": "HH:MM o \\"\\"", "new_day_offset": 0 },
+  "fast_time": "HH:MM o \\"\\"",
+  "reply": ""
+}`;
+
+/** Saca el objeto JSON del texto de la respuesta (por si viene con ``` o una frase). */
+export function extractJson(text: string): unknown {
+  const a = text.indexOf('{');
+  const b = text.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('sin JSON');
+  return JSON.parse(text.slice(a, b + 1));
+}
 
 const orNull = <T extends string>(v: T): Exclude<T, typeof NONE> | null => (v === NONE ? null : (v as Exclude<T, typeof NONE>));
 const str = (v: string) => (v.trim() ? v.trim() : null);
@@ -312,7 +351,10 @@ kind
 
 reply: déjalo vacío casi siempre. Sólo si kind es «otro» y la persona pregunta cómo usar la app o algo general, escribe una respuesta muy corta (máx. 2 frases) en español de Colombia. Nunca des diagnósticos ni digas qué alimentos eliminar; si describe sangre abundante, heces negras, vómito con sangre, fiebre alta, dolor muy fuerte o pérdida de peso sin explicación, recomienda en reply buscar atención médica pronto.
 
-Cuando algo no aplica: arreglos vacíos, textos "" (hora "" si no la dijo), «ninguno» en las listas de opciones, -1 en intensidad, duración y number, 0 en bristol, digestion, water_ml e in_minutes, y false en los sí/no. Los objetos query, reminder y saved_ref siempre van; llénalos sólo si kind es consulta, recordatorio, corregir_guardado o mover_guardado (si no, con rellenos). Una consulta sin rango de días lleva has_range false; saved_ref sin día indicado lleva has_day false.`;
+Cuando algo no aplica: arreglos vacíos, textos "" (hora "" si no la dijo), «ninguno» en las listas de opciones, -1 en intensidad, duración y number, 0 en bristol, digestion, water_ml e in_minutes, y false en los sí/no. Los objetos query, reminder y saved_ref siempre van; llénalos sólo si kind es consulta, recordatorio, corregir_guardado o mover_guardado (si no, con rellenos). Una consulta sin rango de días lleva has_range false; saved_ref sin día indicado lleva has_day false.
+
+Responde ÚNICAMENTE con un objeto JSON válido (sin texto antes ni después, sin \`\`\`) con exactamente esta forma:
+${TEMPLATE}`;
 
 function contextText(raw: string, c: AiContext): string {
   const d = new Date(c.now);
@@ -332,16 +374,23 @@ function contextText(raw: string, c: AiContext): string {
 export async function callClaude(raw: string, c: AiContext, prefs: AiPrefs): Promise<AiOutput> {
   const client = new Anthropic({ apiKey: prefs.apiKey.trim(), dangerouslyAllowBrowser: true, timeout: 45_000, maxRetries: 1 });
   try {
-    const res = await client.messages.parse({
+    const res = await client.messages.create({
       model: prefs.model,
       max_tokens: 8000,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: contextText(raw, c) }],
-      output_config: { effort: 'low', format: zodOutputFormat(WireOutput) },
+      output_config: { effort: 'low' },
     });
     if (res.stop_reason === 'refusal') throw new AiError('La IA no quiso procesar esta frase.', 'rechazo');
-    if (!res.parsed_output) throw new AiError('La IA respondió en un formato inesperado.', 'formato');
-    return fromWire(res.parsed_output);
+    if (res.stop_reason === 'max_tokens') throw new AiError('La respuesta de la IA quedó incompleta.', 'formato');
+    const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    let data: unknown;
+    try {
+      data = extractJson(text);
+    } catch {
+      throw new AiError('La IA respondió en un formato inesperado.', 'formato');
+    }
+    return fromWire(WireOutput.parse(data));
   } catch (e) {
     if (e instanceof AiError) throw e;
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw new AiError('La clave de la IA no es válida. Revísala en Ajustes.', 'clave');

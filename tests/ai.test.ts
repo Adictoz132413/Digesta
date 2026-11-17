@@ -179,3 +179,29 @@ describe('IA: formato enviado (sin campos opcionales)', () => {
     expect(t.parse.waterVague).toBe(true);
   });
 });
+
+describe('IA: respuesta en texto JSON, validada con tolerancia', () => {
+  it('acepta JSON incompleto, con valores raros o envuelto en texto', async () => {
+    const { extractJson, fromWire, WireOutput, SYSTEM_PROMPT } = await import('@/voice/aiClient');
+    expect(SYSTEM_PROMPT).toContain('"remove_from_draft"');
+    const text = 'Aquí está:\n```json\n{"kind":"registro","meals":[{"meal_type":"almuerzo","time":"12:30","items":[{"name":"Salchipapa","quantity":"muchisima","preparation":"frito"}]}],"symptoms":[{"type":"gases","intensity":"fuerte"}],"water_ml":null,"query":null}\n```';
+    const o = fromWire(WireOutput.parse(extractJson(text)));
+    expect(o.meals[0]).toMatchObject({ meal_type: 'almuerzo', time: '12:30', day_offset: 0 });
+    expect(o.meals[0].items[0]).toMatchObject({ name: 'Salchipapa', quantity: 'normal', preparation: 'frito', ingredients: [] });
+    expect(o.symptoms[0]).toMatchObject({ type: 'gases', intensity: null });
+    expect(o).toMatchObject({ water_ml: null, query: null, reply: '' });
+    const t = aiToTurn(o, NOW);
+    expect(t.parse.meals[0].at).toBe(at(12, 30));
+  });
+
+  it('una consulta con el objeto query incompleto sigue siendo consulta', async () => {
+    const { fromWire, WireOutput } = await import('@/voice/aiClient');
+    const o = fromWire(WireOutput.parse({ kind: 'consulta', query: { kind: 'ate', foods: ['salchipapa'], has_range: true, from_day_offset: -1, to_day_offset: -1 } }));
+    expect(o.query).toMatchObject({ kind: 'ate', foods: ['salchipapa'], from_day_offset: -1, meal_type: null });
+  });
+
+  it('sin JSON → error de formato', async () => {
+    const { extractJson } = await import('@/voice/aiClient');
+    expect(() => extractJson('no entendí')).toThrow();
+  });
+});
