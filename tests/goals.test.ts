@@ -120,3 +120,30 @@ describe('las listas se agregan solas', () => {
     expect((await listGoals()).some((g) => g.source === GOAL_PRESETS[0].source)).toBe(false);
   });
 });
+
+describe('temas', () => {
+  it('todas las metas de las listas tienen tema; péptidos y alimentación quedan aparte', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    const items = GOAL_PRESETS.flatMap((p) => p.items);
+    expect(items.every((i) => i.category)).toBe(true);
+    const count = (c: string) => items.filter((i) => i.category === c).length;
+    expect(count('Péptidos')).toBe(8);
+    expect(count('Alimentación')).toBe(4);
+  });
+
+  it('las metas guardadas antes de los temas reciben su tema al abrir la app', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    // Como en la versión anterior: listas agregadas sin tema
+    for (const p of GOAL_PRESETS) {
+      await addPreset(p.source, p.sourceUrl, p.items.map(({ category: _c, ...i }) => i));
+      localStorage.setItem(`digesta:lista:${p.sourceUrl}`, '1');
+    }
+    localStorage.setItem('digesta:metas-iniciadas', '1');
+    await addGoals([{ source: 'Mis metas', text: 'Leer 10 páginas' }]);
+    expect((await listGoals()).every((g) => !g.category)).toBe(true);
+    await seedPresetsOnce();
+    const all = await listGoals();
+    expect(all.filter((g) => g.category === 'Péptidos')).toHaveLength(8);
+    expect(all.find((g) => g.text === 'Leer 10 páginas')?.category).toBeUndefined();
+  });
+});

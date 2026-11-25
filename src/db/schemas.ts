@@ -3,6 +3,7 @@
  * formularios y al importar copias de seguridad.
  */
 import { z } from 'zod';
+import { GOAL_CATEGORIES } from '@/domain/types';
 
 const id = z.string().min(1).max(64);
 const ms = z.number().int().nonnegative();
@@ -165,6 +166,7 @@ export const goalSchema = z.object({
   text: z.string().trim().min(1, 'Escribe la meta').max(300),
   detail: z.string().trim().max(1000).optional(),
   caution: z.string().trim().max(1000).optional(),
+  category: z.enum(GOAL_CATEGORIES).optional(),
   done: z.boolean(),
   doneAt: ms.optional(),
   order: z.number(),

@@ -8,11 +8,35 @@ import { AlertTriangle, Check, ExternalLink, ListChecks, Pencil, Plus, Sparkles,
 import { useEffect, useState } from 'react';
 import { addGoals, addPreset, deleteGoal, deleteSource, listGoals, renameSource, seedGoalsOnce, toggleGoal, updateGoal, type GoalInput } from '@/db/goals';
 import { dayKey, formatShortDate } from '@/domain/dates';
-import type { Goal } from '@/domain/types';
+import { GOAL_CATEGORIES, type Goal, type GoalCategory } from '@/domain/types';
 import { GOAL_PRESETS } from '@/domain/goalPresets';
 import { AiError, aiReady, extractGoalsWithAi } from '@/voice/ai';
 import { navigate } from '@/lib/router';
-import { Button, Card, EmptyState, Field, IconButton, Sheet, TextArea, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Segmented, Field, IconButton, Sheet, TextArea, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
+
+const CATEGORY_ICON: Record<GoalCategory, string> = {
+  Péptidos: '💉',
+  Alimentación: '🥗',
+  Suplementos: '💊',
+  Sueño: '😴',
+  'Respiración y estrés': '🫁',
+  Ejercicio: '🏃',
+  Aparatos: '📟',
+  'Otros hábitos': '✨',
+};
+
+type View = 'tema' | 'video';
+const VIEW_KEY = 'digesta:metas-vista';
+function readView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'video' ? 'video' : 'tema';
+  } catch {
+    return 'tema';
+  }
+}
+
+/** Nombre corto de la fuente para mostrar en cada meta ("Dormir mejor…"). */
+const shortSource = (s: string) => s.replace(/^Dr\.\s*Norwitz\s*·\s*/i, '');
 
 export function GoalsScreen() {
   const goals = useLiveQuery(() => listGoals(), [], undefined);
@@ -21,6 +45,15 @@ export function GoalsScreen() {
   const [importing, setImporting] = useState(false);
   const [editSource, setEditSource] = useState<{ name: string; url?: string }>();
   const [hideDone, setHideDone] = useState(false);
+  const [view, setViewState] = useState<View>(readView);
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* sin almacenamiento */
+    }
+  };
 
   useEffect(() => {
     void seedGoalsOnce();
@@ -30,6 +63,7 @@ export function GoalsScreen() {
   const done = goals.filter((g) => g.done).length;
   const groups = [...new Set(goals.map((g) => g.source))].map((source) => ({ source, url: goals.find((g) => g.source === source && g.sourceUrl)?.sourceUrl, items: goals.filter((g) => g.source === source) }));
   const sources = groups.map((g) => g.source);
+  const topics = GOAL_CATEGORIES.map((c) => ({ category: c, items: goals.filter((g) => (g.category ?? 'Otros hábitos') === c) })).filter((t) => t.items.length);
   const presets = GOAL_PRESETS.filter((p) => !goals.some((g) => g.source === p.source || g.sourceUrl === p.sourceUrl));
 
   const toggle = async (g: Goal) => {
@@ -106,7 +140,47 @@ export function GoalsScreen() {
         </div>
       )}
 
-      {groups.map((grp) => {
+      {goals.length > 0 && (
+        <Segmented
+          className="mt-5"
+          label="Organizar las metas"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'tema', label: 'Por tema' },
+            { value: 'video', label: 'Por video' },
+          ]}
+        />
+      )}
+
+      {view === 'tema' &&
+        topics.map((t) => {
+          const visible = hideDone ? t.items.filter((g) => !g.done) : t.items;
+          const tDone = t.items.filter((g) => g.done).length;
+          return (
+            <section key={t.category} className="mt-6">
+              <div className="mb-2 px-1">
+                <h2 className="text-base font-extrabold">
+                  <span aria-hidden>{CATEGORY_ICON[t.category]}</span> {t.category}
+                </h2>
+                <p className="text-xs text-muted">
+                  {tDone}/{t.items.length} cumplidas
+                </p>
+              </div>
+              {visible.length === 0 ? (
+                <p className="px-1 text-sm text-muted">Todo cumplido aquí.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {visible.map((g) => (
+                    <GoalRow key={g.id} goal={g} sourceLabel={shortSource(g.source)} onToggle={() => void toggle(g)} onEdit={() => setEditing(g)} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
+
+      {view === 'video' && groups.map((grp) => {
         const visible = hideDone ? grp.items.filter((g) => !g.done) : grp.items;
         const gDone = grp.items.filter((g) => g.done).length;
         return (
@@ -150,7 +224,7 @@ export function GoalsScreen() {
   );
 }
 
-function GoalRow({ goal: g, onToggle, onEdit }: { goal: Goal; onToggle: () => void; onEdit: () => void }) {
+function GoalRow({ goal: g, sourceLabel, onToggle, onEdit }: { goal: Goal; sourceLabel?: string; onToggle: () => void; onEdit: () => void }) {
   return (
     <li className={cx('flex items-start gap-3 rounded-2xl border border-border bg-surface p-3 shadow-card', g.done && 'opacity-70')}>
       <button
@@ -173,6 +247,7 @@ function GoalRow({ goal: g, onToggle, onEdit }: { goal: Goal; onToggle: () => vo
           </span>
         )}
         {g.done && g.doneAt && <span className="mt-0.5 block text-xs text-good">Cumplida el {formatShortDate(dayKey(g.doneAt))}</span>}
+        {sourceLabel && <span className="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-muted/80">{sourceLabel}</span>}
       </button>
     </li>
   );
@@ -188,7 +263,7 @@ function GoalEditor({ goal, sources, onClose }: { goal: Goal | 'new' | undefined
   useEffect(() => {
     if (!goal) return;
     setError(undefined);
-    setForm(g ? { source: g.source, sourceUrl: g.sourceUrl, text: g.text, detail: g.detail, caution: g.caution } : { source: sources[0] ?? 'Mis metas', text: '' });
+    setForm(g ? { source: g.source, sourceUrl: g.sourceUrl, text: g.text, detail: g.detail, caution: g.caution, category: g.category } : { source: sources[0] ?? 'Mis metas', text: '' });
   }, [goal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
@@ -233,6 +308,16 @@ function GoalEditor({ goal, sources, onClose }: { goal: Goal | 'new' | undefined
       </Field>
       <Field label="Detalle (opcional)" htmlFor="goal-detail" hint="Cantidad, horario o cómo hacerlo.">
         <TextArea id="goal-detail" rows={2} value={form.detail ?? ''} onChange={(e) => setForm({ ...form, detail: e.target.value })} />
+      </Field>
+      <Field label="Tema" htmlFor="goal-cat">
+        <select id="goal-cat" className={inputClass} value={form.category ?? ''} onChange={(e) => setForm({ ...form, category: (e.target.value || undefined) as GoalCategory | undefined })}>
+          <option value="">Sin tema</option>
+          {GOAL_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {CATEGORY_ICON[c]} {c}
+            </option>
+          ))}
+        </select>
       </Field>
       <Field label="Grupo o fuente" htmlFor="goal-source" hint="El video o la persona de donde sale el consejo.">
         <input id="goal-source" list="goal-sources" className={inputClass} value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} />

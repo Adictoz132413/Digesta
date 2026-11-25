@@ -227,6 +227,9 @@ export interface FoodNote {
 
 export type FastProtocol = '12:12' | '14:10' | '16:8' | '18:6' | 'personalizado';
 
+export const GOAL_CATEGORIES = ['Péptidos', 'Alimentación', 'Suplementos', 'Sueño', 'Respiración y estrés', 'Ejercicio', 'Aparatos', 'Otros hábitos'] as const;
+export type GoalCategory = (typeof GOAL_CATEGORIES)[number];
+
 /** Meta o consejo para ir cumpliendo (p. ej. lo que recomienda un video). */
 export interface Goal {
   id: ID;
@@ -240,6 +243,8 @@ export interface Goal {
   detail?: string;
   /** Advertencia de seguridad o de evidencia (p. ej. suplementos no aprobados). */
   caution?: string;
+  /** Tema para agrupar: Péptidos, Alimentación, Suplementos… */
+  category?: GoalCategory;
   done: boolean;
   doneAt?: number;
   order: number;

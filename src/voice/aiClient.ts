@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import * as z from 'zod/v4';
 import { AiError, type AiContext, type AiPrefs } from './ai';
+import { GOAL_CATEGORIES, type GoalCategory } from '@/domain/types';
 
 // ───────── Formato de respuesta (salida estructurada) ─────────
 
@@ -427,16 +428,17 @@ Reglas
 - Incluye TODO lo que el video recomienda hacer, comprar, tomar, comer, evitar o medir, en el orden en que aparece. No omitas consejos aunque no estés de acuerdo; no inventes consejos que no estén en el texto.
 - detail: cantidades, horarios, duración o forma exacta que dice el texto (o "" si no dice).
 - caution: déjalo "" salvo que la acción implique suplementos, péptidos, hormonas, medicamentos, ayunos largos, dosis altas o algo con riesgo real. En ese caso escribe una advertencia breve, neutral y verdadera (estado regulatorio, qué tan sólida es la evidencia, interacciones o para quién es riesgoso) y sugiere consultarlo con un médico. No moralices ni te niegues.
+- category: el tema que mejor le queda, uno de: ${GOAL_CATEGORIES.join(', ')}.
 - Ignora saludos, publicidad del canal, pedidos de suscribirse y anécdotas sin acción.
 
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después:
-{"items":[{"text":"acción","detail":"","caution":""}]}`;
+{"items":[{"text":"acción","detail":"","caution":"","category":"Alimentación"}]}`;
 
 const GoalsWire = z.object({
-  items: list(z.object({ text: txt(), detail: txt(), caution: txt() })),
+  items: list(z.object({ text: txt(), detail: txt(), caution: txt(), category: pick(GOAL_CATEGORIES, 'Otros hábitos') })),
 });
 
-export async function callClaudeGoals(source: string, text: string, prefs: AiPrefs): Promise<{ text: string; detail?: string; caution?: string }[]> {
+export async function callClaudeGoals(source: string, text: string, prefs: AiPrefs): Promise<{ text: string; detail?: string; caution?: string; category: GoalCategory }[]> {
   const client = new Anthropic({
     apiKey: prefs.apiKey.trim(),
     dangerouslyAllowBrowser: true,
@@ -470,6 +472,7 @@ export async function callClaudeGoals(source: string, text: string, prefs: AiPre
         text: i.text.trim(),
         detail: i.detail.trim() || undefined,
         caution: i.caution.trim() || undefined,
+        category: i.category,
       }));
   } catch (e) {
     throw toAiError(e);

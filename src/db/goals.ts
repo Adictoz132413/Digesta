@@ -5,7 +5,7 @@
 import { getDb } from './db';
 import { newId, ValidationError } from './repo';
 import { firstIssue, goalSchema } from './schemas';
-import type { Goal } from '@/domain/types';
+import type { Goal, GoalCategory } from '@/domain/types';
 
 export interface GoalInput {
   source: string;
@@ -13,6 +13,7 @@ export interface GoalInput {
   text: string;
   detail?: string;
   caution?: string;
+  category?: GoalCategory;
 }
 
 const clean = (v?: string) => (v && v.trim() ? v.trim() : undefined);
@@ -50,6 +51,7 @@ export async function addGoals(inputs: GoalInput[]): Promise<Goal[]> {
         text: i.text.trim(),
         detail: clean(i.detail),
         caution: clean(i.caution),
+        category: i.category,
         done: false,
         order: maxOrder + n + 1,
         createdAt: now + n,
@@ -91,6 +93,7 @@ export async function updateGoal(id: string, patch: Partial<GoalInput> & { done?
     ...('sourceUrl' in patch && { sourceUrl: clean(patch.sourceUrl) }),
     ...('detail' in patch && { detail: clean(patch.detail) }),
     ...('caution' in patch && { caution: clean(patch.caution) }),
+    ...('category' in patch && { category: patch.category }),
     updatedAt: now,
   };
   if (patch.done !== undefined && patch.done !== prev.done) {
@@ -156,4 +159,15 @@ export async function seedPresetsOnce() {
     if (goals.some((g) => g.source === p.source || g.sourceUrl === p.sourceUrl)) continue;
     await addPreset(p.source, p.sourceUrl, p.items);
   }
+  await backfillCategories();
+}
+
+/** Pone el tema a las metas de las listas incluidas que se agregaron antes de que existieran los temas. */
+export async function backfillCategories() {
+  const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+  const norm = (t: string) => t.trim().toLowerCase();
+  const byText = new Map(GOAL_PRESETS.flatMap((p) => p.items.map((i) => [norm(i.text), i.category] as const)));
+  const db = getDb();
+  const missing = (await db.goals.toArray()).filter((g) => !g.category && byText.get(norm(g.text)));
+  if (missing.length) await db.goals.bulkPut(missing.map((g) => ({ ...g, category: byText.get(norm(g.text)) })));
 }
