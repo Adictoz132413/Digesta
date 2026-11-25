@@ -243,7 +243,10 @@ function GoalRow({ goal: g, sourceLabel, onToggle, onEdit }: { goal: Goal; sourc
         {g.caution && !g.done && (
           <span className="mt-1.5 flex gap-1.5 rounded-xl bg-mid-soft px-2 py-1.5 text-xs leading-snug text-text">
             <AlertTriangle size={14} className="mt-px shrink-0 text-mid" />
-            <span>{g.caution}</span>
+            <span>
+              <strong className="font-semibold">Nota de DIGESTA (no es del video): </strong>
+              {g.caution}
+            </span>
           </span>
         )}
         {g.done && g.doneAt && <span className="mt-0.5 block text-xs text-good">Cumplida el {formatShortDate(dayKey(g.doneAt))}</span>}
@@ -330,7 +333,10 @@ function GoalEditor({ goal, sources, onClose }: { goal: Goal | 'new' | undefined
       {form.caution && (
         <div className="mb-4 flex gap-2 rounded-2xl bg-mid-soft p-3 text-sm">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-mid" />
-          <span>{form.caution}</span>
+          <span>
+            <strong className="font-semibold">Nota de DIGESTA (no es del video): </strong>
+            {form.caution}
+          </span>
         </div>
       )}
     </Sheet>

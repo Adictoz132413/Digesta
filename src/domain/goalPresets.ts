@@ -26,13 +26,13 @@ export const GOAL_PRESETS: GoalPreset[] = [
         category: 'Respiración y estrés',
         detail: 'Una inhalación profunda, luego otra inhalación corta y una exhalación lenta. Según el video activa el nervio vago y ayuda a producir mucina que nutre las bacterias intestinales (min. 3:05).',
       },
-      { text: 'Dejar 12 horas seguidas sin comer cada día', category: 'Alimentación', detail: 'Alimentación con tiempo restringido para que el intestino se repare (min. 6:43). Puedes llevarlo en la sección de ayuno.' },
+      { text: 'Dejar 12 horas seguidas sin comer cada día', category: 'Alimentación', detail: 'Alimentación con tiempo restringido para que el intestino se repare (min. 6:43).' },
       { text: 'No comer en las 3 horas antes de dormir', category: 'Alimentación', detail: 'Min. 6:43.' },
       {
         text: 'Priorizar alimentos fermentados: chucrut, kimchi y kéfir',
         category: 'Alimentación',
         detail:
-          'Chucrut (repollo fermentado) y kimchi: sin pasteurizar, de la nevera del supermercado, que diga «fermentado naturalmente» o «cultivos vivos»; no sirven los de lata ni los encurtidos en vinagre. Porción: ¼ de taza. Kéfir: mejor de leche de oveja o de cabra; porción: 1 taza (250 ml). Según el video bajan la inflamación de forma más constante que la fibra (min. 7:32). El estudio de Stanford de 2021 que muestra esto llegó a unas 6 porciones de fermentados al día (también yogur con cultivos vivos y kombucha), subiendo poco a poco durante varias semanas.',
+          'Chucrut, kimchi y kéfir; el kéfir, especialmente de oveja o de cabra. Según el video conviene priorizarlos sobre la fibra porque bajan la inflamación de forma más constante (min. 7:32).',
       },
       {
         text: 'Considerar una dieta sin fibra (sólo en enfermedad inflamatoria intestinal grave)',
@@ -44,8 +44,7 @@ export const GOAL_PRESETS: GoalPreset[] = [
         text: 'Tomar los probióticos específicos que recomienda',
         category: 'Suplementos',
         detail:
-          'Según el video ayudarían a atrapar microplásticos en el intestino (min. 10:52). El resumen no nombra la cepa; lo más probable es que hable de Lacticaseibacillus paracasei DT66 y Lactiplantibacillus plantarum DT88, las del estudio de 2025 (empresa Bluepha) que en ratones atraparon microplásticos y aumentaron su salida en las heces. Confírmalo en el video antes de comprar: busca en la etiqueta la cepa exacta (DT66 o DT88), no sólo la especie.',
-        caution: 'Sólo hay estudios en laboratorio y en ratones; no está probado en personas. Estas cepas no son las de los probióticos comunes de farmacia.',
+          'Según el video, ciertos probióticos podrían ayudar a atrapar microplásticos en el intestino (min. 10:52). El resumen no dice cuáles.',
       },
       {
         text: 'Comprar BPC-157',
@@ -75,14 +74,14 @@ export const GOAL_PRESETS: GoalPreset[] = [
     sourceUrl: 'https://www.youtube.com/watch?v=cgnfJtLc_pY',
     basis: 'Transcripción del video «How Much Sleep Do You Really Need?».',
     items: [
-      { text: 'Mantener un horario de sueño constante', category: 'Sueño', detail: 'Acostarte y levantarte a la misma hora todos los días (min. 8:40).' },
+      { text: 'Mantener un horario de sueño constante', category: 'Sueño', detail: 'Min. 8:40.' },
       { text: 'Tomar sol en la mañana', category: 'Sueño', detail: 'Min. 8:40.' },
       { text: 'Reducir la luz brillante en la noche', category: 'Sueño', detail: 'Min. 8:40.' },
       { text: 'Comprar magnesio L-treonato', category: 'Suplementos', detail: 'La forma de magnesio que, según el video, entra mejor al cerebro (min. 9:02).' },
       {
         text: 'Tomar 1 a 2 g de magnesio L-treonato 30 a 60 minutos antes de dormir',
         category: 'Suplementos',
-        detail: 'Es el peso del compuesto, no del magnesio puro (min. 10:45).',
+        detail: 'Dosis del video: 1 a 2 g, de 30 a 60 minutos antes de dormir (min. 10:45).',
         caution: 'Si tienes enfermedad de los riñones, consúltalo antes. Sepáralo unas 2 horas de antibióticos como tetraciclinas o quinolonas y de medicamentos para la tiroides o la osteoporosis.',
       },
       { text: 'Dormir de lado', category: 'Sueño', detail: 'En roedores, de lado el cerebro se «limpia» mejor durante el sueño; en personas no está probado (min. 11:49).' },
@@ -133,7 +132,7 @@ export const GOAL_PRESETS: GoalPreset[] = [
       {
         text: 'Observar cómo responde tu cuerpo a cada cambio',
         category: 'Otros hábitos',
-        detail: '«La salud es un experimento N=1»: mantente curioso sobre tu propio cuerpo. Puedes anotar en DIGESTA cómo te sientes al empezar cada hábito (min. 16:02).',
+        detail: '«La salud es un experimento N=1»: mantente curioso sobre tu propio cuerpo (min. 16:02).',
       },
     ],
   },
@@ -141,6 +140,10 @@ export const GOAL_PRESETS: GoalPreset[] = [
 
 /** Textos anteriores de las listas: si una meta guardada todavía los tiene, se actualiza al abrir la app. */
 export const PREVIOUS_DETAILS: Record<string, string[]> = {
-  'Priorizar alimentos fermentados: chucrut, kimchi y kéfir': ['Mejor kéfir de oveja o de cabra. Según el video reducen la inflamación de forma más constante que la fibra (min. 7:32).'],
-  'Tomar los probióticos específicos que recomienda': ['Según el video podrían ayudar a atrapar microplásticos en el intestino. El resumen no dice cuáles: revisa el nombre de la cepa en el min. 10:52.'],
+  'Dejar 12 horas seguidas sin comer cada día': ['Alimentación con tiempo restringido para que el intestino se repare (min. 6:43). Puedes llevarlo en la sección de ayuno.'],
+  'Priorizar alimentos fermentados: chucrut, kimchi y kéfir': ['Mejor kéfir de oveja o de cabra. Según el video reducen la inflamación de forma más constante que la fibra (min. 7:32).', 'Chucrut (repollo fermentado) y kimchi: sin pasteurizar, de la nevera del supermercado, que diga «fermentado naturalmente» o «cultivos vivos»; no sirven los de lata ni los encurtidos en vinagre. Porción: ¼ de taza. Kéfir: mejor de leche de oveja o de cabra; porción: 1 taza (250 ml). Según el video bajan la inflamación de forma más constante que la fibra (min. 7:32). El estudio de Stanford de 2021 que muestra esto llegó a unas 6 porciones de fermentados al día (también yogur con cultivos vivos y kombucha), subiendo poco a poco durante varias semanas.'],
+  'Tomar los probióticos específicos que recomienda': ['Según el video podrían ayudar a atrapar microplásticos en el intestino. El resumen no dice cuáles: revisa el nombre de la cepa en el min. 10:52.', 'Según el video ayudarían a atrapar microplásticos en el intestino (min. 10:52). El resumen no nombra la cepa; lo más probable es que hable de Lacticaseibacillus paracasei DT66 y Lactiplantibacillus plantarum DT88, las del estudio de 2025 (empresa Bluepha) que en ratones atraparon microplásticos y aumentaron su salida en las heces. Confírmalo en el video antes de comprar: busca en la etiqueta la cepa exacta (DT66 o DT88), no sólo la especie.'],
+  'Mantener un horario de sueño constante': ['Acostarte y levantarte a la misma hora todos los días (min. 8:40).'],
+  'Tomar 1 a 2 g de magnesio L-treonato 30 a 60 minutos antes de dormir': ['Es el peso del compuesto, no del magnesio puro (min. 10:45).'],
+  'Observar cómo responde tu cuerpo a cada cambio': ['«La salud es un experimento N=1»: mantente curioso sobre tu propio cuerpo. Puedes anotar en DIGESTA cómo te sientes al empezar cada hábito (min. 16:02).'],
 };

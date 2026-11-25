@@ -164,8 +164,33 @@ describe('detalles más específicos', () => {
     await seedPresetsOnce();
     const all = await listGoals();
     const p = all.find((g) => g.text === prob[0])!;
-    expect(p.detail).toContain('DT66');
-    expect(p.caution).toContain('ratones');
+    expect(p.detail).toContain('microplásticos');
+    expect(p.detail).not.toContain('DT66');
+    expect(p.caution).toBeUndefined();
     expect(all.find((g) => g.text === ferm[0])!.detail).toBe('Mi nota propia');
+  });
+});
+
+describe('sólo lo que dicen los videos', () => {
+  it('quita lo que agregó DIGESTA en versiones anteriores (cepas, porciones, estudios)', async () => {
+    const { GOAL_PRESETS, PREVIOUS_DETAILS } = await import('@/domain/goalPresets');
+    for (const pr of GOAL_PRESETS) localStorage.setItem(`digesta:lista:${pr.sourceUrl}`, '1');
+    localStorage.setItem('digesta:metas-iniciadas', '1');
+    const prob = 'Tomar los probióticos específicos que recomienda';
+    const ferm = 'Priorizar alimentos fermentados: chucrut, kimchi y kéfir';
+    const dt66 = PREVIOUS_DETAILS[prob].find((d) => d.includes('DT66'));
+    const porciones = PREVIOUS_DETAILS[ferm].find((d) => d.includes('Stanford'));
+    expect(dt66 && porciones).toBeTruthy();
+    await addGoals([
+      { source: 'Video', text: prob, detail: dt66, caution: 'Sólo hay estudios en laboratorio y en ratones' },
+      { source: 'Video', text: ferm, detail: porciones },
+    ]);
+    await seedPresetsOnce();
+    const all = await listGoals();
+    expect(all.find((g) => g.text === prob)).toMatchObject({ caution: undefined });
+    expect(all.find((g) => g.text === prob)!.detail).not.toContain('DT66');
+    expect(all.find((g) => g.text === ferm)!.detail).not.toMatch(/Stanford|Porción/);
+    const allDetails = GOAL_PRESETS.flatMap((p) => p.items.map((i) => i.detail ?? '')).join(' ');
+    expect(allDetails).not.toMatch(/DT66|Stanford|Porción|DIGESTA|sección de ayuno/);
   });
 });

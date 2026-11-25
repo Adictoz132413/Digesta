@@ -178,7 +178,7 @@ export async function backfillCategories() {
     // Detalle de una versión anterior de la lista (no editado a mano): se pone el nuevo, más específico
     if (g.detail && prev.get(norm(g.text))?.includes(g.detail)) {
       next.detail = item.detail;
-      if (item.caution && !g.caution) next.caution = item.caution;
+      next.caution = item.caution;
     }
     if (next.category !== g.category || next.detail !== g.detail || next.caution !== g.caution) changed.push(next);
   }
