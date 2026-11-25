@@ -60,6 +60,25 @@ export async function addGoals(inputs: GoalInput[]): Promise<Goal[]> {
   return out;
 }
 
+/**
+ * Agrega una lista completa. Si una meta igual ya existe en otro grupo (p. ej.
+ * «Comprar el péptido pinealon»), se mueve a este grupo conservando si ya
+ * estaba cumplida, en vez de duplicarla.
+ */
+export async function addPreset(source: string, sourceUrl: string, items: Omit<GoalInput, 'source' | 'sourceUrl'>[]): Promise<number> {
+  const db = getDb();
+  const norm = (t: string) => t.trim().toLowerCase();
+  const existing = await db.goals.toArray();
+  const fresh: GoalInput[] = [];
+  for (const i of items) {
+    const same = existing.find((g) => norm(g.text) === norm(i.text));
+    if (same) await updateGoal(same.id, { ...i, source, sourceUrl });
+    else fresh.push({ ...i, source, sourceUrl });
+  }
+  await addGoals(fresh);
+  return items.length;
+}
+
 export async function updateGoal(id: string, patch: Partial<GoalInput> & { done?: boolean }): Promise<Goal> {
   const db = getDb();
   const prev = await db.goals.get(id);

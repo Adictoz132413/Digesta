@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getDb, openDbForTests } from '@/db/db';
-import { addGoals, deleteSource, listGoals, PINEALON_CAUTION, renameSource, seedGoalsOnce, toggleGoal, updateGoal } from '@/db/goals';
+import { addGoals, addPreset, deleteSource, listGoals, PINEALON_CAUTION, renameSource, seedGoalsOnce, toggleGoal, updateGoal } from '@/db/goals';
 import { exportBackupJson, importBackup } from '@/db/backup';
 import { ValidationError, wipeAll } from '@/db/repo';
 
@@ -75,11 +75,28 @@ describe('listas listas para agregar', () => {
   it('cada lista es válida y se puede agregar completa', async () => {
     const { GOAL_PRESETS } = await import('@/domain/goalPresets');
     for (const p of GOAL_PRESETS) {
-      const added = await addGoals(p.items.map((i) => ({ ...i, source: p.source, sourceUrl: p.sourceUrl })));
-      expect(added).toHaveLength(p.items.length);
+      expect(await addPreset(p.source, p.sourceUrl, p.items)).toBe(p.items.length);
     }
     const all = await listGoals();
     expect(all.some((g) => g.text === 'Tomar larazotida 15 minutos antes de cada comida')).toBe(true);
     expect(all.filter((g) => /^Comprar (BPC-157|larazotida|KPV)$/.test(g.text)).every((g) => !!g.caution)).toBe(true);
+  });
+});
+
+describe('la meta del pinealon no se duplica', () => {
+  it('al agregar la lista del sueño se mueve a ese grupo y conserva si estaba cumplida', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    await seedGoalsOnce();
+    const [seed] = await listGoals();
+    await toggleGoal(seed);
+    const sleep = GOAL_PRESETS.find((p) => p.sourceUrl.endsWith('cgnfJtLc_pY'))!;
+    await addPreset(sleep.source, sleep.sourceUrl, sleep.items);
+    const all = await listGoals();
+    const pine = all.filter((g) => /pinealon/i.test(g.text) && g.text.startsWith('Comprar'));
+    expect(pine).toHaveLength(1);
+    expect(pine[0]).toMatchObject({ source: sleep.source, done: true });
+    expect(pine[0].detail).toContain('Your Protocols');
+    expect(all.some((g) => g.source === 'Videos de YouTube')).toBe(false);
+    expect(all).toHaveLength(sleep.items.length);
   });
 });

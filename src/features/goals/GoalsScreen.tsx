@@ -6,7 +6,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { AlertTriangle, Check, ExternalLink, ListChecks, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { addGoals, deleteGoal, deleteSource, listGoals, renameSource, seedGoalsOnce, toggleGoal, updateGoal, type GoalInput } from '@/db/goals';
+import { addGoals, addPreset, deleteGoal, deleteSource, listGoals, renameSource, seedGoalsOnce, toggleGoal, updateGoal, type GoalInput } from '@/db/goals';
 import { dayKey, formatShortDate } from '@/domain/dates';
 import type { Goal } from '@/domain/types';
 import { GOAL_PRESETS } from '@/domain/goalPresets';
@@ -86,7 +86,7 @@ export function GoalsScreen() {
             block
             onClick={async () => {
               try {
-                await addGoals(p.items.map((i) => ({ ...i, source: p.source, sourceUrl: p.sourceUrl })));
+                await addPreset(p.source, p.sourceUrl, p.items);
                 toast(`Agregué ${p.items.length} metas`);
               } catch (e) {
                 toast(errorMessage(e), { tone: 'error' });
