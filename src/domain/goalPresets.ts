@@ -85,4 +85,30 @@ export const GOAL_PRESETS: GoalPreset[] = [
       },
     ],
   },
+  {
+    source: 'Dr. Norwitz · El nervio vago contra la inflamación',
+    sourceUrl: 'https://www.youtube.com/watch?v=uSJxTYX8YBA',
+    basis: 'Transcripción del video «The Gut Health Trick I Wish I Knew 10 Years Ago».',
+    items: [
+      {
+        text: 'Hacer unos minutos de «suspiro cíclico»',
+        detail: 'Doble inhalación por la nariz y una exhalación larga y lenta por la boca. Alargar la exhalación activa el nervio vago y calma el sistema nervioso (min. 13:13).',
+      },
+      {
+        text: 'Tratar la reducción del estrés como terapia para el intestino',
+        detail: 'Date permiso de hacer actividades que te relajen y que disfrutes. Según el video, el estrés baja el tono vagal y empeora la inflamación intestinal (min. 15:07).',
+      },
+      {
+        text: 'Comprar un estimulador no invasivo del nervio vago',
+        detail: 'Aparatos que se ponen en la oreja o el cuello y dan pulsos eléctricos suaves. Él probó el Pulsetto, que va alrededor del cuello (min. 16:02).',
+        caution:
+          'Si tienes marcapasos u otro implante eléctrico, problemas del ritmo del corazón o epilepsia, o estás en embarazo, consúltalo antes. La aprobación de la FDA que menciona el video es para un implante en artritis reumatoide, no para estos aparatos externos.',
+      },
+      { text: 'Usar el estimulador del nervio vago', detail: 'Él dice sentirse más tranquilo y con menos hinchazón unos 7 minutos después de encenderlo. El video no da horario ni duración.' },
+      {
+        text: 'Observar cómo responde tu cuerpo a cada cambio',
+        detail: '«La salud es un experimento N=1»: mantente curioso sobre tu propio cuerpo. Puedes anotar en DIGESTA cómo te sientes al empezar cada hábito (min. 16:02).',
+      },
+    ],
+  },
 ];
