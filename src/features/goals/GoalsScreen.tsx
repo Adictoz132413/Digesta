@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { addGoals, deleteGoal, deleteSource, listGoals, renameSource, seedGoalsOnce, toggleGoal, updateGoal, type GoalInput } from '@/db/goals';
 import { dayKey, formatShortDate } from '@/domain/dates';
 import type { Goal } from '@/domain/types';
+import { GOAL_PRESETS } from '@/domain/goalPresets';
 import { AiError, aiReady, extractGoalsWithAi } from '@/voice/ai';
 import { navigate } from '@/lib/router';
 import { Button, Card, EmptyState, Field, IconButton, Sheet, TextArea, cx, errorMessage, inputClass, useConfirm, useToast } from '@/components/ui';
@@ -29,6 +30,7 @@ export function GoalsScreen() {
   const done = goals.filter((g) => g.done).length;
   const groups = [...new Set(goals.map((g) => g.source))].map((source) => ({ source, url: goals.find((g) => g.source === source && g.sourceUrl)?.sourceUrl, items: goals.filter((g) => g.source === source) }));
   const sources = groups.map((g) => g.source);
+  const presets = GOAL_PRESETS.filter((p) => !goals.some((g) => g.source === p.source || g.sourceUrl === p.sourceUrl));
 
   const toggle = async (g: Goal) => {
     try {
@@ -71,6 +73,30 @@ export function GoalsScreen() {
           <Plus size={17} /> Agregar meta
         </Button>
       </div>
+
+      {presets.map((p) => (
+        <Card key={p.source} className="mt-4 border-primary/40">
+          <p className="text-xs font-bold uppercase tracking-wider text-primary">Lista lista para agregar</p>
+          <p className="mt-1 font-bold">{p.source}</p>
+          <p className="mt-0.5 text-sm text-muted">
+            {p.items.length} metas sacadas del {p.basis.charAt(0).toLowerCase() + p.basis.slice(1)}
+          </p>
+          <Button
+            className="mt-3"
+            block
+            onClick={async () => {
+              try {
+                await addGoals(p.items.map((i) => ({ ...i, source: p.source, sourceUrl: p.sourceUrl })));
+                toast(`Agregué ${p.items.length} metas`);
+              } catch (e) {
+                toast(errorMessage(e), { tone: 'error' });
+              }
+            }}
+          >
+            <Plus size={17} /> Agregar {p.items.length} metas
+          </Button>
+        </Card>
+      ))}
 
       {goals.length === 0 && (
         <div className="mt-6">

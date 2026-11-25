@@ -70,3 +70,16 @@ describe('lista de metas', () => {
     expect(await getDb().goals.count()).toBe(0);
   });
 });
+
+describe('listas listas para agregar', () => {
+  it('cada lista es válida y se puede agregar completa', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    for (const p of GOAL_PRESETS) {
+      const added = await addGoals(p.items.map((i) => ({ ...i, source: p.source, sourceUrl: p.sourceUrl })));
+      expect(added).toHaveLength(p.items.length);
+    }
+    const all = await listGoals();
+    expect(all.some((g) => g.text === 'Tomar larazotida 15 minutos antes de cada comida')).toBe(true);
+    expect(all.filter((g) => /^Comprar (BPC-157|larazotida|KPV)$/.test(g.text)).every((g) => !!g.caution)).toBe(true);
+  });
+});
