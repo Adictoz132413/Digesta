@@ -23,6 +23,7 @@ import { ReportScreen } from '@/features/reports/ReportScreen';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { AssistantScreen } from '@/features/assistant/AssistantScreen';
 import { FastingScreen } from '@/features/fasting/FastingScreen';
+import { GoalsScreen } from '@/features/goals/GoalsScreen';
 import { useFastingNotifier } from '@/lib/fastingNotifier';
 import { useCustomReminderScheduler } from '@/lib/customReminderScheduler';
 import { Onboarding } from '@/features/settings/Onboarding';
@@ -103,6 +104,9 @@ function Shell() {
       break;
     case 'ayuno':
       screen = <FastingScreen />;
+      break;
+    case 'metas':
+      screen = <GoalsScreen />;
       break;
     case 'asistente':
       screen = <AssistantScreen />;

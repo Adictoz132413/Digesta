@@ -8,7 +8,7 @@
  * El modo activo se guarda en localStorage y cambiarlo recarga la app.
  */
 import Dexie, { type Table } from 'dexie';
-import type { CustomFood, DailyLog, FavoriteMeal, Fast, FoodNote, Meal, Photo, SettingRow, Stool, Symptom } from '@/domain/types';
+import type { CustomFood, DailyLog, FavoriteMeal, Fast, FoodNote, Goal, Meal, Photo, SettingRow, Stool, Symptom } from '@/domain/types';
 
 export type DbMode = 'real' | 'demo';
 export const DB_NAMES: Record<DbMode, string> = { real: 'digesta', demo: 'digesta-demo' };
@@ -25,6 +25,7 @@ export class DigestaDB extends Dexie {
   photos!: Table<Photo, string>;
   settings!: Table<SettingRow, string>;
   fasts!: Table<Fast, string>;
+  goals!: Table<Goal, string>;
 
   constructor(name: string) {
     super(name);
@@ -41,11 +42,13 @@ export class DigestaDB extends Dexie {
     });
     // v2: ayuno intermitente
     this.version(2).stores({ fasts: 'id, startAt, endAt' });
+    // v3: lista de metas
+    this.version(3).stores({ goals: 'id, source, order' });
   }
 }
 
 /** Lista de tablas, en el orden usado por respaldos y borrado. */
-export const TABLE_NAMES = ['meals', 'stools', 'symptoms', 'dailyLogs', 'favorites', 'customFoods', 'foodNotes', 'photos', 'settings', 'fasts'] as const;
+export const TABLE_NAMES = ['meals', 'stools', 'symptoms', 'dailyLogs', 'favorites', 'customFoods', 'foodNotes', 'photos', 'settings', 'fasts', 'goals'] as const;
 export type TableName = (typeof TABLE_NAMES)[number];
 
 export function readMode(): DbMode {

@@ -158,6 +158,20 @@ export const fastSchema = z
   })
   .refine((f) => f.endAt === undefined || f.endAt >= f.startAt, { message: 'El fin del ayuno no puede ser anterior al inicio', path: ['endAt'] });
 
+export const goalSchema = z.object({
+  id,
+  source: z.string().trim().min(1, 'Escribe de dónde sale').max(120),
+  sourceUrl: z.string().trim().url('El enlace no es válido').max(500).optional(),
+  text: z.string().trim().min(1, 'Escribe la meta').max(300),
+  detail: z.string().trim().max(1000).optional(),
+  caution: z.string().trim().max(1000).optional(),
+  done: z.boolean(),
+  doneAt: ms.optional(),
+  order: z.number(),
+  createdAt: ms,
+  updatedAt: ms,
+});
+
 export const settingsSchema = z.object({
   theme: z.enum(['sistema', 'claro', 'oscuro']),
   waterGoal: z.number().int().min(1).max(30),
@@ -214,6 +228,8 @@ export const backupSchema = z.object({
     photos: z.array(backupPhotoSchema),
     /** Agregado en la versión con ayuno intermitente; los respaldos anteriores no lo traen. */
     fasts: z.array(fastSchema).optional(),
+    /** Agregado con la lista de metas. */
+    goals: z.array(goalSchema).optional(),
     settings: settingsSchema.partial().optional(),
   }),
 });

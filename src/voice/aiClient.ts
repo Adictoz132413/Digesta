@@ -255,7 +255,13 @@ export function fromWire(w: WireOutput): AiOutput {
       meal_type: orNull(m.meal_type),
       time: str(m.time),
       day_offset: int(m.day_offset),
-      items: m.items.map((i) => ({ name: i.name, quantity: i.quantity, custom_quantity: str(i.custom_quantity), preparation: orNull(i.preparation), ingredients: i.ingredients })),
+      items: m.items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        custom_quantity: str(i.custom_quantity),
+        preparation: orNull(i.preparation),
+        ingredients: i.ingredients,
+      })),
       supplements: m.supplements,
       feeling_after: orNull(m.feeling_after),
     })),
@@ -304,7 +310,13 @@ export function fromWire(w: WireOutput): AiOutput {
         : null,
     reminder:
       w.kind === 'recordatorio'
-        ? { text: w.reminder.text, time: str(w.reminder.time), day_offset: int(w.reminder.day_offset), in_minutes: w.reminder.in_minutes > 0 ? w.reminder.in_minutes : null, daily: w.reminder.daily }
+        ? {
+            text: w.reminder.text,
+            time: str(w.reminder.time),
+            day_offset: int(w.reminder.day_offset),
+            in_minutes: w.reminder.in_minutes > 0 ? w.reminder.in_minutes : null,
+            daily: w.reminder.daily,
+          }
         : null,
     saved_ref:
       w.kind === 'corregir_guardado' || w.kind === 'mover_guardado'
@@ -358,7 +370,12 @@ ${TEMPLATE}`;
 
 function contextText(raw: string, c: AiContext): string {
   const d = new Date(c.now);
-  const weekday = d.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const weekday = d.toLocaleDateString('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
   const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   return [
     `Ahora: ${weekday}, ${hh} (hora local).`,
@@ -372,7 +389,12 @@ function contextText(raw: string, c: AiContext): string {
 
 /** Pide a Claude que interprete la frase. Lanza AiError si no se pudo. */
 export async function callClaude(raw: string, c: AiContext, prefs: AiPrefs): Promise<AiOutput> {
-  const client = new Anthropic({ apiKey: prefs.apiKey.trim(), dangerouslyAllowBrowser: true, timeout: 45_000, maxRetries: 1 });
+  const client = new Anthropic({
+    apiKey: prefs.apiKey.trim(),
+    dangerouslyAllowBrowser: true,
+    timeout: 45_000,
+    maxRetries: 1,
+  });
   try {
     const res = await client.messages.create({
       model: prefs.model,
@@ -392,18 +414,84 @@ export async function callClaude(raw: string, c: AiContext, prefs: AiPrefs): Pro
     }
     return fromWire(WireOutput.parse(data));
   } catch (e) {
-    if (e instanceof AiError) throw e;
-    if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw new AiError('La clave de la IA no es válida. Revísala en Ajustes.', 'clave');
-    if (e instanceof Anthropic.RateLimitError) throw new AiError('La IA está recibiendo demasiadas solicitudes; intenta en un momento.', 'limite');
-    if (e instanceof Anthropic.APIConnectionError) throw new AiError('Sin conexión con la IA.', 'red');
-    if (e instanceof Anthropic.APIError) {
-      const msg = String(e.message ?? '');
-      if (e.status === 400 && /credit|balance|billing/i.test(msg)) throw new AiError('Tu cuenta de Anthropic no tiene saldo.', 'saldo');
-      // Se muestra el detalle que da Anthropic para poder diagnosticar
-      const detail = msg.replace(/^\d{3}\s*/, '').replace(/\{.*"message":"([^"]+)".*\}/s, '$1').slice(0, 180).replace(/[.\s]+$/, '');
-      throw new AiError(`La IA devolvió un error (${e.status ?? 'sin código'})${detail ? `: ${detail}` : ''}.`, 'otro');
-    }
-    throw new AiError('No pude usar la IA.', 'otro');
+    throw toAiError(e);
   }
 }
 
+// ───────── Metas: sacar los consejos de un texto (transcripción de un video) ─────────
+
+const GOALS_PROMPT = `Recibes la transcripción (o un resumen) de un video o texto en español con consejos de salud, hábitos, alimentación, ejercicio, sueño, suplementos o compras. Tu tarea es convertirla en una lista de acciones concretas que la persona pueda ir cumpliendo y tachando.
+
+Reglas
+- Una acción por elemento, en imperativo corto y claro, en español de Colombia («Tomar 3 litros de agua al día», «Comprar el péptido pinealon», «Caminar 10 minutos después de cada comida»).
+- Incluye TODO lo que el video recomienda hacer, comprar, tomar, comer, evitar o medir, en el orden en que aparece. No omitas consejos aunque no estés de acuerdo; no inventes consejos que no estén en el texto.
+- detail: cantidades, horarios, duración o forma exacta que dice el texto (o "" si no dice).
+- caution: déjalo "" salvo que la acción implique suplementos, péptidos, hormonas, medicamentos, ayunos largos, dosis altas o algo con riesgo real. En ese caso escribe una advertencia breve, neutral y verdadera (estado regulatorio, qué tan sólida es la evidencia, interacciones o para quién es riesgoso) y sugiere consultarlo con un médico. No moralices ni te niegues.
+- Ignora saludos, publicidad del canal, pedidos de suscribirse y anécdotas sin acción.
+
+Responde ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después:
+{"items":[{"text":"acción","detail":"","caution":""}]}`;
+
+const GoalsWire = z.object({
+  items: list(z.object({ text: txt(), detail: txt(), caution: txt() })),
+});
+
+export async function callClaudeGoals(source: string, text: string, prefs: AiPrefs): Promise<{ text: string; detail?: string; caution?: string }[]> {
+  const client = new Anthropic({
+    apiKey: prefs.apiKey.trim(),
+    dangerouslyAllowBrowser: true,
+    timeout: 120_000,
+    maxRetries: 1,
+  });
+  try {
+    const res = await client.messages.create({
+      model: prefs.model,
+      max_tokens: 16000,
+      system: GOALS_PROMPT,
+      messages: [
+        {
+          role: 'user',
+          content: `Fuente: ${source || 'sin nombre'}\n\nTexto:\n${text}`,
+        },
+      ],
+      output_config: { effort: 'low' },
+    });
+    if (res.stop_reason === 'refusal') throw new AiError('La IA no quiso procesar este texto.', 'rechazo');
+    const out = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('');
+    let data: unknown;
+    try {
+      data = extractJson(out);
+    } catch {
+      throw new AiError(res.stop_reason === 'max_tokens' ? 'El texto es muy largo; pégalo por partes.' : 'La IA respondió en un formato inesperado.', 'formato');
+    }
+    return GoalsWire.parse(data)
+      .items.filter((i) => i.text.trim())
+      .map((i) => ({
+        text: i.text.trim(),
+        detail: i.detail.trim() || undefined,
+        caution: i.caution.trim() || undefined,
+      }));
+  } catch (e) {
+    throw toAiError(e);
+  }
+}
+
+/** Traduce los errores de la API a mensajes en español. */
+function toAiError(e: unknown): AiError {
+  if (e instanceof AiError) return e;
+  if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return new AiError('La clave de la IA no es válida. Revísala en Ajustes.', 'clave');
+  if (e instanceof Anthropic.RateLimitError) return new AiError('La IA está recibiendo demasiadas solicitudes; intenta en un momento.', 'limite');
+  if (e instanceof Anthropic.APIConnectionError) return new AiError('Sin conexión con la IA.', 'red');
+  if (e instanceof Anthropic.APIError) {
+    const msg = String(e.message ?? '');
+    if (e.status === 400 && /credit|balance|billing/i.test(msg)) return new AiError('Tu cuenta de Anthropic no tiene saldo.', 'saldo');
+    // Se muestra el detalle que da Anthropic para poder diagnosticar
+    const detail = msg
+      .replace(/^\d{3}\s*/, '')
+      .replace(/\{.*"message":"([^"]+)".*\}/s, '$1')
+      .slice(0, 180)
+      .replace(/[.\s]+$/, '');
+    return new AiError(`La IA devolvió un error (${e.status ?? 'sin código'})${detail ? `: ${detail}` : ''}.`, 'otro');
+  }
+  return new AiError('No pude usar la IA.', 'otro');
+}

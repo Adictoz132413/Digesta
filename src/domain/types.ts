@@ -227,6 +227,26 @@ export interface FoodNote {
 
 export type FastProtocol = '12:12' | '14:10' | '16:8' | '18:6' | 'personalizado';
 
+/** Meta o consejo para ir cumpliendo (p. ej. lo que recomienda un video). */
+export interface Goal {
+  id: ID;
+  /** De dónde sale: nombre del video, persona o "Mis metas". */
+  source: string;
+  /** Enlace a la fuente (video), si hay. */
+  sourceUrl?: string;
+  /** Qué hay que hacer. */
+  text: string;
+  /** Detalle práctico: cantidad, horario, cómo. */
+  detail?: string;
+  /** Advertencia de seguridad o de evidencia (p. ej. suplementos no aprobados). */
+  caution?: string;
+  done: boolean;
+  doneAt?: number;
+  order: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Fast {
   id: ID;
   /** Inicio del ayuno (puede estar en el futuro si está programado). */

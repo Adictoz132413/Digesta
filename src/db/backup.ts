@@ -37,7 +37,7 @@ function photoToBackup(p: Photo) {
 /** Construye el objeto de respaldo de la base activa. */
 export async function buildBackup(): Promise<BackupFile> {
   const db = getDb();
-  const [meals, stools, symptoms, dailyLogs, favorites, customFoods, foodNotes, photos, settingsRow, fasts] = await Promise.all([
+  const [meals, stools, symptoms, dailyLogs, favorites, customFoods, foodNotes, photos, settingsRow, fasts, goals] = await Promise.all([
     db.meals.toArray(),
     db.stools.toArray(),
     db.symptoms.toArray(),
@@ -48,6 +48,7 @@ export async function buildBackup(): Promise<BackupFile> {
     db.photos.toArray(),
     db.settings.get('settings'),
     db.fasts.toArray(),
+    db.goals.toArray(),
   ]);
   return {
     format: BACKUP_FORMAT,
@@ -64,6 +65,7 @@ export async function buildBackup(): Promise<BackupFile> {
       foodNotes,
       photos: photos.map(photoToBackup),
       fasts,
+      goals,
       settings: settingsRow?.value ?? DEFAULT_SETTINGS,
     },
   };
@@ -130,6 +132,7 @@ export async function importBackup(text: string, mode: 'replace' | 'merge'): Pro
       await db.foodNotes.bulkPut(b.data.foodNotes as never);
       await db.photos.bulkPut(photos);
       await db.fasts.bulkPut((b.data.fasts ?? []) as never);
+      await db.goals.bulkPut((b.data.goals ?? []) as never);
       await db.settings.put({ key: 'settings', value: { ...DEFAULT_SETTINGS, ...(b.data.settings ?? {}) } as Settings });
     } else {
       const mergeNewer = async <T extends { updatedAt?: number }>(table: { get(k: string): Promise<T | undefined>; put(v: T): Promise<unknown> }, rows: T[], keyOf: (r: T) => string) => {
@@ -144,6 +147,7 @@ export async function importBackup(text: string, mode: 'replace' | 'merge'): Pro
       await mergeNewer(db.dailyLogs as never, b.data.dailyLogs, (r) => r.day);
       await mergeNewer(db.foodNotes as never, b.data.foodNotes, (r) => r.key);
       await mergeNewer(db.fasts as never, b.data.fasts ?? [], (r) => r.id);
+      await mergeNewer(db.goals as never, b.data.goals ?? [], (r) => r.id);
       for (const f of b.data.favorites) if (!(await db.favorites.get(f.id))) await db.favorites.put(f as never);
       for (const f of b.data.customFoods) if (!(await db.customFoods.get(f.key))) await db.customFoods.put(f as never);
       for (const p of photos) if (!(await db.photos.get(p.id))) await db.photos.put(p);

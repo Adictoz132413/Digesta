@@ -15,6 +15,7 @@ import type { DigestionRating } from '@/domain/types';
 import { dayStatus } from '@/analysis/stats';
 import { useEntry } from '@/features/entries/EntryProvider';
 import { FastingCard } from '@/features/fasting/FastingCard';
+import { GoalsCard } from '@/features/goals/GoalsCard';
 import { HydrationCard } from './HydrationCard';
 import { MealRow, StoolRow, SymptomRow } from '@/components/rows';
 import { BristolIcon } from '@/components/illustrations';
@@ -166,6 +167,7 @@ export function TodayScreen({ newEntry }: { newEntry?: string }) {
       </div>
 
       <FastingCard now={now} />
+      <GoalsCard />
 
       {/* Línea de tiempo */}
       <SectionTitle

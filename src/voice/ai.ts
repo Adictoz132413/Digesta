@@ -87,6 +87,17 @@ export async function interpretWithAi(raw: string, c: AiContext, prefs: AiPrefs 
   return mod.callClaude(raw, c, prefs);
 }
 
+/** Saca de un texto (transcripción de un video) la lista de acciones para cumplir. */
+export async function extractGoalsWithAi(source: string, text: string, prefs: AiPrefs = readAiPrefs()) {
+  let mod: typeof import('./aiClient');
+  try {
+    mod = await import('./aiClient');
+  } catch {
+    throw new AiError('Sin conexión con la IA.', 'red');
+  }
+  return mod.callClaudeGoals(source, text, prefs);
+}
+
 /** Prueba la clave con una frase corta. */
 export async function testAi(prefs: AiPrefs): Promise<string> {
   const out = await interpretWithAi('desayuné arepa con queso', { now: Date.now(), draft: [], bottleMl: 600 }, prefs);
