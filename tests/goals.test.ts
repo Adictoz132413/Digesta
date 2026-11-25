@@ -147,3 +147,25 @@ describe('temas', () => {
     expect(all.find((g) => g.text === 'Leer 10 páginas')?.category).toBeUndefined();
   });
 });
+
+describe('detalles más específicos', () => {
+  it('las metas con el detalle anterior se actualizan; las editadas a mano no', async () => {
+    const { PREVIOUS_DETAILS } = await import('@/domain/goalPresets');
+    const entries = Object.entries(PREVIOUS_DETAILS);
+    const prob = entries.find(([t]) => t.includes('probióticos'))!;
+    const ferm = entries.find(([t]) => t.includes('fermentados'))!;
+    await addGoals([
+      { source: 'Video', text: prob[0], detail: prob[1][0] },
+      { source: 'Video', text: ferm[0], detail: 'Mi nota propia' },
+    ]);
+    localStorage.setItem('digesta:metas-iniciadas', '1');
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    for (const pr of GOAL_PRESETS) localStorage.setItem(`digesta:lista:${pr.sourceUrl}`, '1');
+    await seedPresetsOnce();
+    const all = await listGoals();
+    const p = all.find((g) => g.text === prob[0])!;
+    expect(p.detail).toContain('DT66');
+    expect(p.caution).toContain('ratones');
+    expect(all.find((g) => g.text === ferm[0])!.detail).toBe('Mi nota propia');
+  });
+});

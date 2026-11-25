@@ -164,10 +164,23 @@ export async function seedPresetsOnce() {
 
 /** Pone el tema a las metas de las listas incluidas que se agregaron antes de que existieran los temas. */
 export async function backfillCategories() {
-  const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+  const { GOAL_PRESETS, PREVIOUS_DETAILS } = await import('@/domain/goalPresets');
   const norm = (t: string) => t.trim().toLowerCase();
-  const byText = new Map(GOAL_PRESETS.flatMap((p) => p.items.map((i) => [norm(i.text), i.category] as const)));
+  const byText = new Map(GOAL_PRESETS.flatMap((p) => p.items.map((i) => [norm(i.text), i] as const)));
+  const prev = new Map(Object.entries(PREVIOUS_DETAILS).map(([t, d]) => [norm(t), d]));
   const db = getDb();
-  const missing = (await db.goals.toArray()).filter((g) => !g.category && byText.get(norm(g.text)));
-  if (missing.length) await db.goals.bulkPut(missing.map((g) => ({ ...g, category: byText.get(norm(g.text)) })));
+  const changed: Goal[] = [];
+  for (const g of await db.goals.toArray()) {
+    const item = byText.get(norm(g.text));
+    if (!item) continue;
+    const next = { ...g };
+    if (!g.category && item.category) next.category = item.category;
+    // Detalle de una versión anterior de la lista (no editado a mano): se pone el nuevo, más específico
+    if (g.detail && prev.get(norm(g.text))?.includes(g.detail)) {
+      next.detail = item.detail;
+      if (item.caution && !g.caution) next.caution = item.caution;
+    }
+    if (next.category !== g.category || next.detail !== g.detail || next.caution !== g.caution) changed.push(next);
+  }
+  if (changed.length) await db.goals.bulkPut(changed);
 }

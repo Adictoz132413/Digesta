@@ -31,7 +31,8 @@ export const GOAL_PRESETS: GoalPreset[] = [
       {
         text: 'Priorizar alimentos fermentados: chucrut, kimchi y kéfir',
         category: 'Alimentación',
-        detail: 'Mejor kéfir de oveja o de cabra. Según el video reducen la inflamación de forma más constante que la fibra (min. 7:32).',
+        detail:
+          'Chucrut (repollo fermentado) y kimchi: sin pasteurizar, de la nevera del supermercado, que diga «fermentado naturalmente» o «cultivos vivos»; no sirven los de lata ni los encurtidos en vinagre. Porción: ¼ de taza. Kéfir: mejor de leche de oveja o de cabra; porción: 1 taza (250 ml). Según el video bajan la inflamación de forma más constante que la fibra (min. 7:32). El estudio de Stanford de 2021 que muestra esto llegó a unas 6 porciones de fermentados al día (también yogur con cultivos vivos y kombucha), subiendo poco a poco durante varias semanas.',
       },
       {
         text: 'Considerar una dieta sin fibra (sólo en enfermedad inflamatoria intestinal grave)',
@@ -42,7 +43,9 @@ export const GOAL_PRESETS: GoalPreset[] = [
       {
         text: 'Tomar los probióticos específicos que recomienda',
         category: 'Suplementos',
-        detail: 'Según el video podrían ayudar a atrapar microplásticos en el intestino. El resumen no dice cuáles: revisa el nombre de la cepa en el min. 10:52.',
+        detail:
+          'Según el video ayudarían a atrapar microplásticos en el intestino (min. 10:52). El resumen no nombra la cepa; lo más probable es que hable de Lacticaseibacillus paracasei DT66 y Lactiplantibacillus plantarum DT88, las del estudio de 2025 (empresa Bluepha) que en ratones atraparon microplásticos y aumentaron su salida en las heces. Confírmalo en el video antes de comprar: busca en la etiqueta la cepa exacta (DT66 o DT88), no sólo la especie.',
+        caution: 'Sólo hay estudios en laboratorio y en ratones; no está probado en personas. Estas cepas no son las de los probióticos comunes de farmacia.',
       },
       {
         text: 'Comprar BPC-157',
@@ -135,3 +138,9 @@ export const GOAL_PRESETS: GoalPreset[] = [
     ],
   },
 ];
+
+/** Textos anteriores de las listas: si una meta guardada todavía los tiene, se actualiza al abrir la app. */
+export const PREVIOUS_DETAILS: Record<string, string[]> = {
+  'Priorizar alimentos fermentados: chucrut, kimchi y kéfir': ['Mejor kéfir de oveja o de cabra. Según el video reducen la inflamación de forma más constante que la fibra (min. 7:32).'],
+  'Tomar los probióticos específicos que recomienda': ['Según el video podrían ayudar a atrapar microplásticos en el intestino. El resumen no dice cuáles: revisa el nombre de la cepa en el min. 10:52.'],
+};
