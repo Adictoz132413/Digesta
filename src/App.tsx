@@ -24,6 +24,7 @@ import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { AssistantScreen } from '@/features/assistant/AssistantScreen';
 import { FastingScreen } from '@/features/fasting/FastingScreen';
 import { GoalsScreen } from '@/features/goals/GoalsScreen';
+import { seedPresetsOnce } from '@/db/goals';
 import { useFastingNotifier } from '@/lib/fastingNotifier';
 import { useCustomReminderScheduler } from '@/lib/customReminderScheduler';
 import { Onboarding } from '@/features/settings/Onboarding';
@@ -76,6 +77,7 @@ function Shell() {
         await db.open();
         if (mode === 'demo' && (await db.meals.count()) === 0) await seedDemo(db);
         void cleanOrphanPhotos().catch(() => undefined);
+        if (mode === 'real') await seedPresetsOnce().catch(() => undefined);
         // Pedir almacenamiento persistente para que el navegador no borre los datos por falta de espacio.
         if (navigator.storage?.persist && !(await navigator.storage.persisted?.())) void navigator.storage.persist();
       } finally {

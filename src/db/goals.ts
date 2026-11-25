@@ -135,3 +135,25 @@ export async function seedGoalsOnce() {
   if ((await getDb().goals.count()) > 0) return;
   await addGoals([{ source: 'Videos de YouTube', text: 'Comprar el péptido pinealon', caution: PINEALON_CAUTION }]);
 }
+
+/**
+ * Agrega solas, una sola vez, las listas incluidas en la app (los videos que
+ * la persona pidió seguir). Si después borra una lista, no vuelve a aparecer
+ * sola: queda la tarjeta para agregarla con un toque.
+ */
+export async function seedPresetsOnce() {
+  const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+  await seedGoalsOnce();
+  for (const p of GOAL_PRESETS) {
+    const key = `digesta:lista:${p.sourceUrl}`;
+    try {
+      if (localStorage.getItem(key)) continue;
+      localStorage.setItem(key, '1');
+    } catch {
+      return;
+    }
+    const goals = await getDb().goals.toArray();
+    if (goals.some((g) => g.source === p.source || g.sourceUrl === p.sourceUrl)) continue;
+    await addPreset(p.source, p.sourceUrl, p.items);
+  }
+}

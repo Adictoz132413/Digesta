@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { getDb, openDbForTests } from '@/db/db';
-import { addGoals, addPreset, deleteSource, listGoals, PINEALON_CAUTION, renameSource, seedGoalsOnce, toggleGoal, updateGoal } from '@/db/goals';
+import { addGoals, addPreset, deleteSource, seedPresetsOnce, listGoals, PINEALON_CAUTION, renameSource, seedGoalsOnce, toggleGoal, updateGoal } from '@/db/goals';
 import { exportBackupJson, importBackup } from '@/db/backup';
 import { ValidationError, wipeAll } from '@/db/repo';
 
@@ -98,5 +98,25 @@ describe('la meta del pinealon no se duplica', () => {
     expect(pine[0].detail).toContain('Your Protocols');
     expect(all.some((g) => g.source === 'Videos de YouTube')).toBe(false);
     expect(all).toHaveLength(sleep.items.length);
+  });
+});
+
+describe('las listas se agregan solas', () => {
+  it('al abrir la app se agregan las 3 listas una sola vez, sin duplicar el pinealon', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    await seedPresetsOnce();
+    await seedPresetsOnce();
+    const all = await listGoals();
+    const total = GOAL_PRESETS.reduce((n, p) => n + p.items.length, 0);
+    expect(all).toHaveLength(total);
+    expect(all.filter((g) => g.text === 'Comprar el péptido pinealon')).toHaveLength(1);
+  });
+
+  it('si borra una lista, no vuelve a aparecer sola', async () => {
+    const { GOAL_PRESETS } = await import('@/domain/goalPresets');
+    await seedPresetsOnce();
+    await deleteSource(GOAL_PRESETS[0].source);
+    await seedPresetsOnce();
+    expect((await listGoals()).some((g) => g.source === GOAL_PRESETS[0].source)).toBe(false);
   });
 });
